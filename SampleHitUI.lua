@@ -99,7 +99,7 @@ local Mouse = LocalPlayer:GetMouse()
 local Lighting = game:GetService("Lighting")
 local StarterGui = game:GetService("StarterGui")
 
-(function()
+;(function()
 	local Players = game:GetService("Players")
 	local UIS = game:GetService("UserInputService")
 	local TweenService = game:GetService("TweenService")
