@@ -2,9 +2,24 @@ if game.PlaceId~=2788229376 then game.Players.LocalPlayer:Kick("Da Hood - only")
 local ok1,a=pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(2788229376).Name end)
 local ok2,b=pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name end)
 setfpscap(999)
+pcall(function() getgenv().ALIUS_BUILD = "2026-10-30T2310Z" end)
 if not LPH_OBFUSCATED then
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/Luraph/macrosdk/main/luraphsdk.lua"))();
+    -- pcall: a blocked raw.githubusercontent / offline executor must not abort the run here
+    pcall(function()
+        local sdk = game:HttpGet("https://raw.githubusercontent.com/Luraph/macrosdk/main/luraphsdk.lua")
+        if type(sdk) == "string" and #sdk > 0 then
+            local chunk = loadstring(sdk)
+            if type(chunk) == "function" then
+                chunk()
+            end
+        end
+    end)
 end
+-- luraph macros: if the sdk did not load, fall back to identity/no-op so the first macro call
+-- at file scope cannot raise "attempt to call a nil value" before the ui is built
+LPH_NO_VIRTUALIZE = LPH_NO_VIRTUALIZE or function(f) return f end
+LPH_JIT_MAX = LPH_JIT_MAX or function(f) return f end
+LPH_CRASH = LPH_CRASH or function() error("LPH_CRASH") end
 local DrawingNew = Drawing.new
 local Vector2New = Vector2.new
 local Vector3New = Vector3.new
@@ -329,6 +344,19 @@ local StarterGui = game:GetService("StarterGui")
 			end
 			return name:sub(1, 5):upper()
 		end
+		if type(key) == "table" then
+			-- never leak "[table: 0x...]" into the ui: unwrap input objects / enum like values
+			if key.KeyCode ~= nil then
+				return keyLabel(key.KeyCode)
+			end
+			if key.UserInputType ~= nil then
+				return keyLabel(key.UserInputType)
+			end
+			if type(key.Name) == "string" and key.Name ~= "" then
+				return key.Name:sub(1, 5):upper()
+			end
+			return "NONE"
+		end
 		return tostring(key)
 	end
 
@@ -574,45 +602,78 @@ local StarterGui = game:GetService("StarterGui")
 			end
 		end))
 
-		-- keybind list panel (floats to the right of the window)
+		-- keybind list panel (floats to the right of the window, aligned with the title band)
+		local kbShadow = New("Frame", {
+			Name = "keybindshadow",
+			BackgroundColor3 = C.Line,
+			BorderSizePixel = 0,
+			Position = UDim2.new(1, 18, 0, -6),
+			Size = UDim2.fromOffset(77, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			ZIndex = 5,
+		}, inner)
+		New("UIPadding", {
+			PaddingBottom = UDim.new(0, 1),
+		}, kbShadow)
 		local kb = New("Frame", {
 			Name = "keybinds",
 			BackgroundColor3 = C.Window,
 			BorderSizePixel = 0,
-			Position = UDim2.new(1, 19, 0, -3),
-			Size = UDim2.fromOffset(75, 0),
+			Position = UDim2.fromOffset(1, 1),
+			Size = UDim2.new(1, -2, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
-			ZIndex = 5,
-		}, inner)
-		New("UICorner", { CornerRadius = UDim.new(0, 3) }, kb)
+			ZIndex = 6,
+		}, kbShadow)
 		Stroke(kb, C.Border, 1)
+		Gradient(kb, Color3.fromRGB(32, 32, 32), Color3.fromRGB(31, 31, 31), 90)
 		New("Frame", {
-			BackgroundColor3 = C.AccentDim,
+			Name = "accentline",
+			BackgroundColor3 = C.Accent,
 			BorderSizePixel = 0,
 			Size = UDim2.new(1, 0, 0, 1),
-			ZIndex = 6,
+			ZIndex = 8,
+		}, kb)
+		New("Frame", {
+			Name = "accentlinegap",
+			BackgroundColor3 = C.Line,
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(0, 1),
+			Size = UDim2.new(1, 0, 0, 1),
+			ZIndex = 8,
+		}, kb)
+		New("Frame", {
+			Name = "accentlineedge",
+			BackgroundColor3 = C.Border,
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(0, 2),
+			Size = UDim2.new(1, 0, 0, 1),
+			ZIndex = 8,
 		}, kb)
 		win.KeybindPanel = kb
+		win.KeybindShadow = kbShadow
 		win.KeybindHeader = Lbl(kb, {
 			Text = "Keybinds",
 			TextSize = 14,
 			TextColor3 = C.Text,
-			Position = UDim2.fromOffset(5, 2),
-			Size = UDim2.new(1, -10, 0, 14),
-			ZIndex = 6,
+			Position = UDim2.fromOffset(4, 3),
+			Size = UDim2.new(1, -8, 0, 12),
+			ZIndex = 7,
 		})
 		local kbList = New("Frame", {
 			Name = "list",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(5, 16),
-			Size = UDim2.new(1, -10, 0, 0),
+			Position = UDim2.fromOffset(4, 22),
+			Size = UDim2.new(1, -9, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
-			ZIndex = 6,
+			ZIndex = 7,
 		}, kb)
 		New("UIListLayout", {
 			Padding = UDim.new(0, 2),
 			SortOrder = Enum.SortOrder.LayoutOrder,
+		}, kbList)
+		New("UIPadding", {
+			PaddingBottom = UDim.new(0, 3),
 		}, kbList)
 		win.KeybindList = kbList
 		win.KeybindRows = {}
@@ -693,6 +754,9 @@ local StarterGui = game:GetService("StarterGui")
 		function win.toggle_list(state)
 			win.ShowKeybinds = state ~= false
 			win.KeybindPanel.Visible = win.ShowKeybinds
+			if win.KeybindShadow then
+				win.KeybindShadow.Visible = win.ShowKeybinds
+			end
 		end
 		win.ShowKeybinds = true
 		function win.toggle_playerlist(state)
@@ -773,6 +837,9 @@ local StarterGui = game:GetService("StarterGui")
 			local index = 0
 			for _, entry in ipairs(win.KeybindRows) do
 				local label = entry.Label
+				if entry.GetKey and entry.Key ~= false then
+					entry.Key = entry.GetKey()
+				end
 				if label and entry.Key and entry.Visible ~= false then
 					any = true
 					index = index + 1
@@ -787,22 +854,25 @@ local StarterGui = game:GetService("StarterGui")
 						Text = label,
 						TextSize = 14,
 						TextColor3 = C.Text,
-						Size = UDim2.new(1, -32, 1, 0),
+						Size = UDim2.new(1, -34, 1, 0),
 						TextTruncate = Enum.TextTruncate.AtEnd,
-						ZIndex = 7,
+						ZIndex = 8,
 					})
 					Lbl(row, {
 						Text = "[" .. keyLabel(entry.Key) .. "]",
 						TextSize = 14,
 						TextColor3 = C.TextDim,
 						TextXAlignment = Enum.TextXAlignment.Right,
-						Position = UDim2.new(1, -32, 0, 0),
-						Size = UDim2.fromOffset(32, 14),
-						ZIndex = 7,
+						Position = UDim2.new(1, -34, 0, 0),
+						Size = UDim2.fromOffset(34, 14),
+						ZIndex = 8,
 					})
 				end
 			end
 			win.KeybindPanel.Visible = win.ShowKeybinds and any
+			if win.KeybindShadow then
+				win.KeybindShadow.Visible = win.KeybindPanel.Visible
+			end
 		end
 
 		-- tab creation
@@ -1366,6 +1436,8 @@ local StarterGui = game:GetService("StarterGui")
 			win:AddBind({
 				Label = opts.Name,
 				Key = key,
+				-- standalone keybind rows stay out of the keybind list, exactly like the source panel
+				Visible = false,
 				GetKey = function()
 					return key
 				end,
@@ -11668,8 +11740,10 @@ end)
 _G.SoundService = game:GetService("SoundService")
 _G.HttpService = game:GetService("HttpService")
 _G.folderPath = "sample-songs"
-if not isfolder(_G.folderPath) then
-    makefolder(_G.folderPath)
+if isfolder and not isfolder(_G.folderPath) then
+    if makefolder then
+        makefolder(_G.folderPath)
+    end
 end
 _G.songs = {
     {name = "Tame Impala - One More Hour", file = "One More Hour.mp3", url = "https://pomf2.lain.la/f/s8k21saj.mp3"},
@@ -12135,7 +12209,7 @@ end
 		Min = 50,
 		Max = 5000,
 		Increment = 1,
-		Suffix = "st",
+		Suffix = "",
 		Flag = "alius_aa_max_distance",
 		Callback = function(value)
 			AIM.maxDist = value
