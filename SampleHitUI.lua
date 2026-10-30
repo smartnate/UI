@@ -175,8 +175,10 @@ local StarterGui = game:GetService("StarterGui")
 		AccentDim = Color3.fromRGB(152, 133, 181),
 		TrackBg = Color3.fromRGB(32, 32, 32),
 		TrackBorder = Color3.fromRGB(42, 42, 42),
-		CheckBg = Color3.fromRGB(33, 33, 33),
-		CheckBorder = Color3.fromRGB(58, 58, 58),
+		CheckBg = Color3.fromRGB(40, 40, 40),
+		CheckBorder = Color3.fromRGB(51, 51, 51),
+		AccentFill = Color3.fromRGB(167, 148, 196),
+		CheckOn = Color3.fromRGB(173, 151, 204),
 		ButtonBg = Color3.fromRGB(31, 31, 31),
 		Popover = Color3.fromRGB(22, 22, 22),
 	}
@@ -856,8 +858,8 @@ local StarterGui = game:GetService("StarterGui")
 				Name = name,
 				BackgroundColor3 = C.Page,
 				BorderSizePixel = 0,
-				Position = UDim2.fromOffset(1, 1),
-				Size = UDim2.new(1, -2, 1, -2),
+				Position = UDim2.fromOffset(0, 0),
+				Size = UDim2.new(1, 0, 1, 0),
 				CanvasSize = UDim2.new(),
 				AutomaticCanvasSize = Enum.AutomaticSize.Y,
 				ScrollBarThickness = 2,
@@ -1006,12 +1008,23 @@ local StarterGui = game:GetService("StarterGui")
 				ZIndex = 6,
 			}, frame)
 
+			-- scroll indicator pinned to the card's right edge (source shows a 2px accent thumb)
+			local scrollThumb = New("Frame", {
+				Name = "scrollthumb",
+				BackgroundColor3 = C.Accent,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, -4, 0, 24),
+				Size = UDim2.new(0, 2, 1, -56),
+				ZIndex = 7,
+			}, frame)
+
 			local strip = New("Frame", {
 				Name = "strip",
 				BackgroundColor3 = C.Card,
 				BorderSizePixel = 0,
 				Position = UDim2.fromOffset(0, 2),
-				Size = UDim2.new(1, 0, 0, 21),
+				Size = UDim2.new(1, 0, 0, 20),
 				ZIndex = 6,
 			}, frame)
 
@@ -1103,14 +1116,14 @@ local StarterGui = game:GetService("StarterGui")
 					Name = "pane_" .. tabName,
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
-					Position = UDim2.fromOffset(6, 31),
-					Size = UDim2.new(1, -12, 0, 0),
+					Position = UDim2.fromOffset(8, 32),
+					Size = UDim2.new(1, -16, 0, 0),
 					AutomaticSize = Enum.AutomaticSize.Y,
 					Visible = false,
 					ZIndex = 6,
 				}, frame)
 				New("UIListLayout", {
-					Padding = UDim.new(0, 2),
+					Padding = UDim.new(0, 3),
 					SortOrder = Enum.SortOrder.LayoutOrder,
 				}, pane)
 				New("UIPadding", {
@@ -1123,7 +1136,7 @@ local StarterGui = game:GetService("StarterGui")
 					Name = "bottomPad",
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
-					Size = UDim2.new(1, 0, 0, 2),
+					Size = UDim2.new(1, 0, 0, 6),
 					LayoutOrder = 9999,
 					ZIndex = 6,
 				}, pane)
@@ -1237,8 +1250,8 @@ local StarterGui = game:GetService("StarterGui")
 			Name = "box",
 			BackgroundColor3 = C.CheckBg,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(0, 2),
-			Size = UDim2.fromOffset(11, 11),
+			Position = UDim2.fromOffset(0, 3),
+			Size = UDim2.fromOffset(10, 10),
 			ZIndex = 8,
 		}, row)
 		local boxStroke = Stroke(box, C.CheckBorder, 1)
@@ -1253,7 +1266,7 @@ local StarterGui = game:GetService("StarterGui")
 
 		local function render()
 			if state then
-				box.BackgroundColor3 = C.Accent
+				box.BackgroundColor3 = C.CheckOn
 				boxStroke.Transparency = 1
 			else
 				box.BackgroundColor3 = C.CheckBg
@@ -1385,7 +1398,7 @@ local StarterGui = game:GetService("StarterGui")
 		local holder = New("Frame", {
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 25),
+			Size = UDim2.new(1, 0, 0, 22),
 			LayoutOrder = opts.Order or (#pane:GetChildren() + 1),
 			ZIndex = 6,
 		}, pane)
@@ -1409,14 +1422,14 @@ local StarterGui = game:GetService("StarterGui")
 			Name = "track",
 			BackgroundColor3 = C.TrackBg,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(0, 15),
-			Size = UDim2.new(1, 0, 0, 5),
+			Position = UDim2.fromOffset(0, 16),
+			Size = UDim2.new(1, 0, 0, 4),
 			ZIndex = 7,
 		}, holder)
 		Stroke(trackBar, C.TrackBorder, 1)
 		local fill = New("Frame", {
 			Name = "fill",
-			BackgroundColor3 = C.Accent,
+			BackgroundColor3 = C.AccentFill,
 			BorderSizePixel = 0,
 			Size = UDim2.new(0, 0, 1, 0),
 			ZIndex = 8,
@@ -1531,7 +1544,7 @@ local StarterGui = game:GetService("StarterGui")
 		local holder = New("Frame", {
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 30),
+			Size = UDim2.new(1, 0, 0, 28),
 			LayoutOrder = opts.Order or (#pane:GetChildren() + 1),
 			ZIndex = 6,
 		}, pane)
@@ -1548,7 +1561,7 @@ local StarterGui = game:GetService("StarterGui")
 			BorderSizePixel = 0,
 			AutoButtonColor = false,
 			Text = "",
-			Position = UDim2.fromOffset(0, 14),
+			Position = UDim2.fromOffset(0, 12),
 			Size = UDim2.new(1, 0, 0, 16),
 			ZIndex = 7,
 		}, holder)
@@ -1873,12 +1886,12 @@ local StarterGui = game:GetService("StarterGui")
 			Name = "buttonrow",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 18),
+			Size = UDim2.new(1, 0, 0, 16),
 			LayoutOrder = #pane:GetChildren() + 1,
 			ZIndex = 7,
 		}, pane)
 		local count = math.max(#labels, 1)
-		local gap = 6
+		local gap = 7
 		local elements = {}
 		for i, label in ipairs(labels) do
 			local btn = New("TextButton", {
@@ -1886,8 +1899,8 @@ local StarterGui = game:GetService("StarterGui")
 				BorderSizePixel = 0,
 				AutoButtonColor = false,
 				Text = "",
-				Position = UDim2.new((i - 1) / count, 0, 0, 0),
-				Size = UDim2.new(1 / count, -gap / count * (count - 1), 0, 18),
+				Position = UDim2.new((i - 1) / count, (i - 1) * gap / count, 0, 0),
+				Size = UDim2.new(1 / count, -gap / count * (count - 1), 0, 16),
 				ZIndex = 7,
 			}, row)
 			Stroke(btn, C.FieldBorder, 1)
@@ -2522,7 +2535,7 @@ local StarterGui = game:GetService("StarterGui")
 
 	function API:Curve(pane, opts)
 		opts = opts or {}
-		local height = opts.Height or 190
+		local height = opts.Height or 195
 		local points = {}
 		for i, p in ipairs(opts.Points or { { x = 0, y = 0 }, { x = 0.33, y = 0.35 }, { x = 0.66, y = 0.66 }, { x = 1, y = 1 } }) do
 			points[i] = { x = p.x, y = p.y }
@@ -2531,7 +2544,7 @@ local StarterGui = game:GetService("StarterGui")
 		local animation = opts.Animation or "sine"
 		local playhead = false
 		local playheadValue = 0
-		local previewSpeed = 0.85
+		local previewSpeed = 0.35
 		local smoothness = 1
 		local version = 0
 
@@ -2588,8 +2601,15 @@ local StarterGui = game:GetService("StarterGui")
 			ClipsDescendants = true,
 			ZIndex = 7,
 		}, pane)
-		Stroke(container, C.BorderSoft, 1)
-		Gradient(container, Color3.fromRGB(32, 32, 32), C.Card, 90)
+		Stroke(container, C.Line, 1)
+		Gradient(container, Color3.fromRGB(32, 32, 32), C.Page, 90)
+		New("Frame", {
+			BackgroundColor3 = C.BorderSoft,
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.new(1, 0, 0, 1),
+			ZIndex = 8,
+		}, container)
 
 		local gridHolder = New("Frame", {
 			BackgroundTransparency = 1,
@@ -2597,18 +2617,18 @@ local StarterGui = game:GetService("StarterGui")
 			Size = UDim2.fromScale(1, 1),
 			ZIndex = 7,
 		}, container)
-		for i = 1, 3 do
+		for i = 1, 4 do
 			New("Frame", {
 				BackgroundColor3 = C.BorderSoft,
 				BorderSizePixel = 0,
-				Position = UDim2.fromScale(i / 4, 0),
+				Position = UDim2.fromScale(i / 5, 0),
 				Size = UDim2.new(0, 1, 1, 0),
 				ZIndex = 7,
 			}, gridHolder)
 			New("Frame", {
 				BackgroundColor3 = C.BorderSoft,
 				BorderSizePixel = 0,
-				Position = UDim2.fromScale(0, i / 4),
+				Position = UDim2.fromScale(0, i / 5),
 				Size = UDim2.new(1, 0, 0, 1),
 				ZIndex = 7,
 			}, gridHolder)
@@ -2625,7 +2645,7 @@ local StarterGui = game:GetService("StarterGui")
 		Lbl(container, {
 			Text = "Distance 0 - 1",
 			TextSize = 14,
-			TextColor3 = C.Text,
+			TextColor3 = C.TextDim,
 			Position = UDim2.new(0, 5, 1, -18),
 			Size = UDim2.fromOffset(110, 14),
 			ZIndex = 9,
@@ -2642,7 +2662,7 @@ local StarterGui = game:GetService("StarterGui")
 		local segments = {}
 		for i = 1, SEGMENTS do
 			segments[i] = New("Frame", {
-				BackgroundColor3 = C.Accent,
+				BackgroundColor3 = C.AccentFill,
 				BorderSizePixel = 0,
 				AnchorPoint = Vector2.new(0, 0.5),
 				Size = UDim2.fromOffset(1, 1),
@@ -2668,6 +2688,8 @@ local StarterGui = game:GetService("StarterGui")
 		}, container)
 		local pointMarkers = {}
 
+		local painted = false
+
 		local function render()
 			version = version + 1
 			local size = container.AbsoluteSize
@@ -2676,6 +2698,7 @@ local StarterGui = game:GetService("StarterGui")
 			if w <= 0 or h <= 0 then
 				return
 			end
+			painted = true
 			local prevX, prevY
 			for i = 1, SEGMENTS do
 				local t = (i - 1) / (SEGMENTS - 1)
@@ -2712,6 +2735,7 @@ local StarterGui = game:GetService("StarterGui")
 						Size = UDim2.fromOffset(5, 5),
 						ZIndex = 11,
 					}, pointHolder)
+					Stroke(mk, C.Line, 1)
 					pointMarkers[i] = mk
 				end
 				mk.Visible = true
@@ -2861,6 +2885,9 @@ local StarterGui = game:GetService("StarterGui")
 				local now = os.clock()
 				local dt = now - last
 				last = now
+				if not painted then
+					render()
+				end
 				if playhead and dt > 0 and dt < 0.5 then
 					playheadValue = playheadValue + dt * previewSpeed * 3
 					if playheadValue > 1 then
@@ -2874,9 +2901,7 @@ local StarterGui = game:GetService("StarterGui")
 
 		container:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 			local w, h = container.AbsoluteSize.X, container.AbsoluteSize.Y
-			container.Size = UDim2.new(1, 0, 0, height)
 			if w > 0 and h > 0 then
-				local v = w
 				render()
 			end
 		end)
@@ -3135,7 +3160,7 @@ end)()
 		resolver = { Page = "Combat", Column = 1, Order = 60, Tabs = { "Resolver" } },
 		conn = { Page = "Combat", Column = 2, Order = 40, Tabs = { "Connection Exploit" } },
 		voidhide = { Page = "Combat", Column = 2, Order = 50, Tabs = { "Void Hide" } },
-		extras = { Page = "Combat", Column = 2, Order = 60, Tabs = { "Shake", "Orbit" } },
+		extras = { Page = "Combat", Column = 2, Order = 60, Tabs = { "Shake", "Orbit", "Smoothing" } },
 		magicbullet = { Page = "Combat", Column = 1, Order = 70, Tabs = { "Magic Bullet" } },
 		esp = { Page = "Visuals", Column = 1, Order = 10, Tabs = { "ESP" } },
 		esp_extra = { Page = "Visuals", Column = 1, Order = 20, Tabs = { "Chams" } },
@@ -12315,7 +12340,7 @@ end
 
 	local curveElement
 	curveElement = API:Curve(smoothPane, {
-		Height = 169,
+		Height = 195,
 		Interpolation = "sine",
 		Points = {
 			{ x = 0, y = 0 },
@@ -12419,7 +12444,7 @@ end
 
 	API:Slider(smoothPane, {
 		Name = "Preview Speed",
-		Default = 0.85,
+		Default = 0.35,
 		Min = 0.05,
 		Max = 1,
 		Increment = 0.05,
@@ -12429,16 +12454,6 @@ end
 		Callback = function(value)
 			AIM.smoothing.speed = value
 			curveElement:SetSpeed(value)
-		end,
-	})
-
-	API:Toggle(smoothPane, {
-		Name = "Use Smoothing",
-		Default = true,
-		Flag = "alius_smooth_enabled",
-		Callback = function(state)
-			AIM.smoothing.enabled = state
-			getgenv().lockUsmooth = state
 		end,
 	})
 
@@ -12490,6 +12505,17 @@ end
 		Flag = "alius_orbit_speed",
 		Callback = function(value)
 			getgenv().orbitSpeed = value
+		end,
+	})
+
+	local smoothGatePane = extrasCard:Pane("Smoothing")
+	API:Toggle(smoothGatePane, {
+		Name = "Use Smoothing",
+		Default = true,
+		Flag = "alius_smooth_enabled",
+		Callback = function(state)
+			AIM.smoothing.enabled = state
+			getgenv().lockUsmooth = state
 		end,
 	})
 
