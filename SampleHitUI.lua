@@ -3136,6 +3136,7 @@ end)()
 		conn = { Page = "Combat", Column = 2, Order = 40, Tabs = { "Connection Exploit" } },
 		voidhide = { Page = "Combat", Column = 2, Order = 50, Tabs = { "Void Hide" } },
 		extras = { Page = "Combat", Column = 2, Order = 60, Tabs = { "Shake", "Orbit" } },
+		magicbullet = { Page = "Combat", Column = 1, Order = 70, Tabs = { "Magic Bullet" } },
 		esp = { Page = "Visuals", Column = 1, Order = 10, Tabs = { "ESP" } },
 		esp_extra = { Page = "Visuals", Column = 1, Order = 20, Tabs = { "Chams" } },
 		crosshair = { Page = "Visuals", Column = 2, Order = 10, Tabs = { "Crosshair", "FPS Overlay" } },
@@ -3165,6 +3166,7 @@ end)()
 	local SECTION_SPEC = {
 		["main|silent aimbot"] = { Card = "assist", Tab = "Silent Aim" },
 		["main|camera aimbot"] = { Hidden = true },
+		["main|magic bullet"] = { Card = "magicbullet", Tab = "Magic Bullet" },
 		["main|triggerbot"] = { Card = "trigger", Tab = "Triggerbot" },
 		["main|bullet manipulation"] = { Card = "manip", Tab = "Bullet Manipulation" },
 		["world|hit notifications"] = { Card = "smooth", Tab = "Hit Feedback" },
