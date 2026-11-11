@@ -167,8 +167,12 @@ local function EmbeddedJujuUI()
 	}
 	local tween = nil
 	do
-		local sqrt = math["sqrt"]
+		local function smooth_t(value)
+			value = clamp(value, 0, 1)
+			return value * value * (3 - 2 * value)
+		end
 		tween = LPH_NO_VIRTUALIZE(function(object, properties, easing_style, _, tween_duration)
+			tween_duration = clamp(tonumber(tween_duration) or 0.15, 0.12, 0.45)
 			local start_time = clock()
 			local tween_functions = {}
 			for property, value in pairs(properties) do
@@ -187,23 +191,13 @@ local function EmbeddedJujuUI()
 				if old_value ~= value then
 					if property == "Color" or property == "Color3" or property == "FillColor" or property == "OutlineColor" then
 						tween_functions[property] = function()
-							local t = clamp((clock() - start_time) / tween_duration, 0, 1)
-							object[property] = color3_lerp(
-								old_value,
-								value,
-								easing_style == exponential and (t == 1 and 1 or 1 - 2 ^ (-10 * t))
-									or easing_style == quad and t ^ 2
-									or sqrt(1 - (t - 1) ^ 2)
-							) or easing_style == "sine" and t < 0.5 and 0.5 * math.sin(t * 355 / 113) or 0.5 + 0.5 * (1 - math.cos(
-								(t - 0.5) * 355 / 113
-							))
+							local t = smooth_t((clock() - start_time) / tween_duration)
+							object[property] = color3_lerp(old_value, value, t)
 						end
 					elseif property == "tween_position" or property == "tween_size" then
 						tween_functions[property] = function()
 							local t = clamp((clock() - start_time) / tween_duration, 0, 1)
-							local tween_value = easing_style == exponential and (t == 1 and 1 or 1 - 2 ^ (-10 * t))
-								or easing_style == quad and t ^ 2
-								or sqrt(1 - (t - 1) ^ 2)
+							local tween_value = smooth_t(t)
 							local new = (value - old_value)
 							new = udim2_new(
 								new["X"]["Scale"] * tween_value,
@@ -216,11 +210,7 @@ local function EmbeddedJujuUI()
 					else
 						tween_functions[property] = function()
 							local t = clamp((clock() - start_time) / tween_duration, 0, 1)
-							object[property] = old_value
-								+ (value - old_value)
-									* (easing_style == exponential and (t == 1 and 1 or 1 - 2 ^ (-10 * t)) or easing_style == quad and t ^ 2 or sqrt(
-										1 - (t - 1) ^ 2
-									))
+							object[property] = old_value + (value - old_value) * smooth_t(t)
 						end
 					end
 				end
@@ -3511,7 +3501,7 @@ local function EmbeddedJujuUI()
 				["Color"] = menu["colors"]["accent"], ["Transparency"] = 0.5, ["Text"] = name,
 				["Parent"] = section_inside, ["Position"] = udim2_new(0, 15, 0, -8), ["Size"] = 12, ["Font"] = 1, ["ZIndex"] = 4, ["Visible"] = true,
 			})
-			local text_bounds = section_label["TextBounds"]["X"] + 20
+			local text_bounds = section_label["TextBounds"]["X"] + 24
 			local section_line_two = drawing_proxy["new"]("Square", {
 				["Parent"] = section_inside, ["Position"] = udim2_new(0, text_bounds, 0, 0), ["Size"] = udim2_new(1, -(text_bounds + 1), 0, 1), ["Color"] = menu["colors"]["accent"], ["Filled"] = true,
 				["Transparency"] = 0.5, ["ZIndex"] = 4, ["Visible"] = true,
@@ -3520,22 +3510,11 @@ local function EmbeddedJujuUI()
 			if side ~= 3 and tab["name"] ~= "reach" then
 				section_drag_handle = drawing_proxy["new"]("Square", {
 					["Parent"] = section_inside, ["Position"] = udim2_new(0, 6, 0, -9), ["Size"] = udim2_new(1, -12, 0, 18), ["Color"] = menu["colors"]["accent"],
-					["Transparency"] = 0, ["Filled"] = true, ["ZIndex"] = 5, ["Visible"] = true,
+					["Transparency"] = 1, ["Filled"] = true, ["ZIndex"] = 5, ["Visible"] = true,
 				})
-				local drag_mark = { "0001000", "0011100", "0001000", "1111111", "0001000", "0011100", "0001000" }
-				for row = 1, #drag_mark do
-					for column = 1, #drag_mark[row] do
-						if drag_mark[row]:sub(column, column) == "1" then
-							section_grip[#section_grip + 1] = drawing_proxy["new"]("Square", {
-								["Parent"] = section_inside, ["Position"] = udim2_new(1, -16 + (column - 1) * 2, 0, -7 + (row - 1) * 2), ["Size"] = udim2_new(0, 1.5, 0, 1.5), ["Color"] = menu["colors"]["accent"],
-								["Transparency"] = 0.32, ["Filled"] = true, ["ZIndex"] = 6, ["Visible"] = true,
-							})
-						end
-					end
-				end
 			end
 			local element_holder = drawing_proxy["new"]("Square", {
-				["Parent"] = section_inside, ["Position"] = udim2_new(0, 10, 0, 10), ["Size"] = udim2_new(1, -20, 1, -20),
+				["Parent"] = section_inside, ["Position"] = udim2_new(0, 14, 0, 10), ["Size"] = udim2_new(1, -28, 1, -20),
 				["Transparency"] = 0, ["Filled"] = true, ["Visible"] = true,
 			})
 			new_section["border"] = section_border
@@ -3584,13 +3563,13 @@ local function EmbeddedJujuUI()
 				["Color"] = menu["colors"]["accent"], ["Transparency"] = 0.5, ["Text"] = name,
 				["Parent"] = section_inside, ["Position"] = udim2_new(0, 15, 0, -8), ["Size"] = 12, ["Font"] = 1, ["Visible"] = true,
 			})
-			local text_bounds = section_label["TextBounds"]["X"] + 20
+			local text_bounds = section_label["TextBounds"]["X"] + 24
 			local section_line_two = drawing_proxy["new"]("Square", {
 				["Parent"] = section_inside, ["Position"] = udim2_new(0, text_bounds, 0, 0), ["Size"] = udim2_new(1, -(text_bounds + 1), 0, 1), ["Color"] = menu["colors"]["accent"], ["Filled"] = true,
 				["Transparency"] = 0.5, ["Visible"] = true,
 			})
 			local element_holder = drawing_proxy["new"]("Square", {
-				["Parent"] = section_inside, ["Position"] = udim2_new(0, 10, 0, 10), ["Size"] = udim2_new(1, -20, 1, -20),
+				["Parent"] = section_inside, ["Position"] = udim2_new(0, 14, 0, 10), ["Size"] = udim2_new(1, -28, 1, -20),
 				["Transparency"] = 0, ["Filled"] = true, ["Visible"] = true,
 			})
 			local search_border = drawing_proxy["new"]("Image", {
@@ -4612,7 +4591,7 @@ local function EmbeddedJujuUI()
 		function section:create_element(info, elements, fake)
 			local position = self["total_y_size"]
 			local new_element, total_y_size = element["new"]({
-				["text"] = info["name"], ["parent"] = self["inside"], ["position"] = udim2_new(0, 10, 0, position), ["fake"] = fake,
+				["text"] = info["name"], ["parent"] = self["inside"], ["position"] = udim2_new(0, 14, 0, position), ["fake"] = fake,
 				["old_visible"] = true, ["section"] = self,
 			}, elements)
 			self["total_y_size"] = self["total_y_size"] + (total_y_size)
@@ -4629,7 +4608,7 @@ local function EmbeddedJujuUI()
 			for i = 1, #elements do
 				local element = elements[i]
 				if element["visible"] then
-					element["frame"]["Position"] = udim2_new(0, 10, 0, total_size)
+					element["frame"]["Position"] = udim2_new(0, 14, 0, total_size)
 					total_size = total_size + (element["total_y_size"])
 				end
 			end
