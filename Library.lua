@@ -80,6 +80,7 @@ do
             Bar = "https://raw.githubusercontent.com/i77lhm/storage/main/fonts/Tahoma-Modern.ttf",
         },
         Font = nil,
+        FontLoaded = {},
         BoldFont = nil,
         BarFont = nil,
 
@@ -425,8 +426,8 @@ do
 
             local Directory = Library.Directory .. Library.Folders.Assets
 
-            if not IsFile(Name .. ".ttf") then
-                Write(Name .. ".ttf", game:HttpGet(Url))
+            if not IsFile(Name) then
+                Write(Name, game:HttpGet(Url))
             end
 
             local MakeFolder = SafeGlobal("makefolder")
@@ -448,14 +449,16 @@ do
                     {
                         name = Name,
                         weight = Weight,
-                        style = string.lower(Style),
-                        assetId = Asset(Name .. ".ttf"),
+                        style = Style,
+                        assetId = Asset(Name),
                     },
                 },
             }
 
             local Path = Directory .. "/" .. Name .. ".font"
             Write(Path, HttpService:JSONEncode(Data))
+
+            Library.FontLoaded[Name] = true
 
             return Font.new(Asset(Path))
         end)
@@ -502,7 +505,8 @@ do
         Frame.BackgroundTransparency = 1
         Frame.BorderSizePixel = 0
         Frame.Position = UDim2.fromOffset(0, 0)
-        Frame.Size = UDim2.fromOffset(0, 0)
+        Frame.Size = UDim2.fromScale(1, 1)
+        Frame.Active = false
         Frame.ZIndex = Order
         Frame.Parent = Holder
 
@@ -766,15 +770,26 @@ do
         Clip.BackgroundTransparency = 1
         Clip.ClipsDescendants = true
 
-        local Shine = NewFrame(Clip, 0, 0, Spread * 2 + 1, 1, nil, 0, 1)
-        Shine.BackgroundTransparency = 1
+        local Width = Spread * 2 + 1
+        local Shine = NewFrame(Clip, 0, 0, Width, 1, Style.base, 1, 1)
 
-        for Offset = -Spread, Spread do
-            local T = 1 - math.abs(Offset) / Spread
-            local Smooth = T * T * (3 - 2 * T)
+        local Grand = Instance.new("UIGradient")
+        Grand.Name = "\0"
+        Grand.Rotation = 0
 
-            Fill(Shine, Offset + Spread, 0, Offset + Spread, 0, LerpColor(Style.base, Style.peak, Smooth), 1, 1)
+        local Keypoints = {}
+        local Steps = 8
+
+        for Step = 0, Steps do
+            local T = Step / Steps
+            local V = 1 - math.abs(T * 2 - 1)
+            local Smooth = V * V * (3 - 2 * V)
+
+            table.insert(Keypoints, ColorSequenceKeypoint.new(T, LerpColor(Style.base, Style.peak, Smooth)))
         end
+
+        Grand.Color = ColorSequence.new(Keypoints)
+        Grand.Parent = Shine
 
         table.insert(Draw.Shines, {
             Kind = "line",
@@ -979,19 +994,13 @@ do
         Label.TextWrapped = false
         Label.TextXAlignment = Enum.TextXAlignment.Left
         Label.TextYAlignment = Enum.TextYAlignment.Center
-        Label.Position = UDim2.fromOffset(math.floor(X), TextTop(CenterY, Kind))
-        Label.Size = UDim2.fromOffset(Width + 2, Font.cell)
+        Label.Position = UDim2.fromOffset(math.floor(X), TextTop(CenterY, Kind) - 2)
+        Label.Size = UDim2.fromOffset(Width + 2, Font.cell + 4)
         Label.ZIndex = ZIndex or 1
         Label.Parent = Parent
 
-        local Stroke = Instance.new("UIStroke")
-        Stroke.Name = "\0"
-        Stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-        Stroke.LineJoinMode = Enum.LineJoinMode.Miter
-        Stroke.Thickness = 1
-        Stroke.Color = C.text_outline
-        Stroke.Transparency = 1 - (Alpha or 1)
-        Stroke.Parent = Label
+        Label.TextStrokeColor3 = C.text_outline
+        Label.TextStrokeTransparency = 1 - (Alpha or 1)
 
         return Label
     end
@@ -2473,7 +2482,7 @@ do
         Hitbox.BorderSizePixel = 0
         Hitbox.Position = UDim2.fromOffset(Left, Row - 6)
         Hitbox.Size = UDim2.fromOffset(METRIC.checkbox_label + Width, 13)
-        Hitbox.ZIndex = 3
+        Hitbox.ZIndex = 40
         Hitbox.Parent = Context.Parent
 
         local Gradient = Draw.Gradient(
@@ -2668,7 +2677,7 @@ do
         Hitbox.BorderSizePixel = 0
         Hitbox.Position = UDim2.fromOffset(Left, Top - 2)
         Hitbox.Size = UDim2.fromOffset(Right - Left + 1, METRIC.slider_height + 4)
-        Hitbox.ZIndex = 4
+        Hitbox.ZIndex = 40
         Hitbox.Parent = Context.Parent
 
         local Hover = HoverChannel(Hitbox)
@@ -2983,7 +2992,7 @@ do
         Hitbox.BorderSizePixel = 0
         Hitbox.Position = UDim2.fromOffset(Left, Top)
         Hitbox.Size = UDim2.fromOffset(Right - Left + 1, METRIC.combo_height)
-        Hitbox.ZIndex = 5
+        Hitbox.ZIndex = 40
         Hitbox.Parent = Context.Parent
 
         local Hover = HoverChannel(Hitbox)
@@ -3061,13 +3070,12 @@ do
                 PopupAbove = true
             end
 
-            local Frame2 = Instance.new("CanvasGroup")
+            local Frame2 = Instance.new("Frame")
             Frame2.Name = "\0"
             Frame2.BackgroundTransparency = 1
             Frame2.BorderSizePixel = 0
             Frame2.Position = UDim2.fromOffset(math.floor(X), math.floor(Y))
             Frame2.Size = UDim2.fromOffset(Width, PopupHeight)
-            Frame2.GroupTransparency = 1
             Frame2.ZIndex = 10
             Frame2.Parent = Library.Layers.Popups.Instance
 
@@ -3433,7 +3441,7 @@ do
         Hitbox.BorderSizePixel = 0
         Hitbox.Position = UDim2.fromOffset(Left, Top)
         Hitbox.Size = UDim2.fromOffset(Right - Left + 1, METRIC.button_height)
-        Hitbox.ZIndex = 5
+        Hitbox.ZIndex = 40
         Hitbox.Parent = Context.Parent
 
         local Hover = HoverChannel(Hitbox)
@@ -3543,7 +3551,7 @@ do
         Hitbox.BorderSizePixel = 0
         Hitbox.Position = UDim2.fromOffset(Left, Top)
         Hitbox.Size = UDim2.fromOffset(Right - Left + 1, METRIC.keybind_height)
-        Hitbox.ZIndex = 5
+        Hitbox.ZIndex = 40
         Hitbox.Parent = Context.Parent
 
         local Label = Draw.TextCentered(Context.Parent, Left, Right, Row, C.text_dim, "-", "reg", 1, 5)
@@ -3625,13 +3633,12 @@ do
                 Y = Hitbox.AbsolutePosition.Y - Height - 1
             end
 
-            local Popup = Instance.new("CanvasGroup")
+            local Popup = Instance.new("Frame")
             Popup.Name = "\0"
             Popup.BackgroundTransparency = 1
             Popup.BorderSizePixel = 0
             Popup.Position = UDim2.fromOffset(math.floor(X), math.floor(Y))
             Popup.Size = UDim2.fromOffset(Width, Height)
-            Popup.GroupTransparency = 1
             Popup.ZIndex = 10
             Popup.Parent = Library.Layers.Popups.Instance
 
@@ -4226,7 +4233,7 @@ do
         Hitbox.BorderSizePixel = 0
         Hitbox.Position = UDim2.fromOffset(0, 0)
         Hitbox.Size = UDim2.fromOffset(Right - Left + 1, METRIC.swatch_height)
-        Hitbox.ZIndex = 6
+        Hitbox.ZIndex = 40
         Hitbox.Parent = Frame
 
         Paint()
@@ -4318,7 +4325,7 @@ do
         Hitbox.BorderSizePixel = 0
         Hitbox.Position = UDim2.fromOffset(Left, Top)
         Hitbox.Size = UDim2.fromOffset(METRIC.expand_size, METRIC.expand_size)
-        Hitbox.ZIndex = 6
+        Hitbox.ZIndex = 40
         Hitbox.Parent = Context.Parent
 
         local Hover = HoverChannel(Hitbox)
@@ -4973,7 +4980,7 @@ do
             Hitbox.BorderSizePixel = 0
             Hitbox.Position = UDim2.fromOffset(Left, TabBar[2])
             Hitbox.Size = UDim2.fromOffset(Right - Left + 1, TabBar[4] - TabBar[2] + 1)
-            Hitbox.ZIndex = 5
+            Hitbox.ZIndex = 40
             Hitbox.Parent = Root
 
             local Label = Draw.TextCentered(Root, Left, Right, TabTextRow, WindowRef.CurrentPage == PageRef and C.text_tab_selected or C.text_dim, PageRef.Name)
@@ -5239,12 +5246,13 @@ do
             Y = math.floor((Screen.Y - MENU.height) / 2),
         }
 
-        local Root = Instance.new("CanvasGroup")
+        local Root = Instance.new("Frame")
         Root.Name = "\0"
         Root.BackgroundTransparency = 1
         Root.BorderSizePixel = 0
         Root.Position = UDim2.fromOffset(Self.Position.X - 10, Self.Position.Y - 10)
         Root.Size = UDim2.fromOffset(MENU.width + 20, MENU.height + 20)
+        Root.Active = true
         Root.ZIndex = 2
         Root.Parent = Library.Layers.Menu.Instance
 
@@ -5294,8 +5302,7 @@ do
 
             local Fade = Anim.Approach("menu_fade_" .. tostring(Root), Self.OpenTarget, 14, Delta)
 
-            Root.GroupTransparency = 1 - Fade
-            Root.Visible = Fade > 0.002
+            Root.Visible = Fade > 0.5
 
             -- tab slide
             if Self.TabProgress < 1 then
@@ -5318,9 +5325,8 @@ do
 
             -- scrollbar
             if Self.Clip then
-                if Self.Scrollbar then
-                    Self.Scrollbar:Destroy()
-                    Self.Scrollbar = nil
+                if not Self.Scrollbar then
+                    Self.Scrollbar = Draw.Fill(Self.Clip, 0, 0, 0, 0, C.grab, 1, 6)
                 end
 
                 local Total = Self.PanelBottom + 9 - 74
@@ -5332,7 +5338,11 @@ do
                     local Range = Total - View
                     local Top = 2 + math.floor((Track - Thumb) * math.clamp(Self.Scroll / Range, 0, 1) + 0.5)
 
-                    Self.Scrollbar = Draw.Fill(Self.Clip, View - 3, Top, View - 2, Top + Thumb - 1, C.grab, 1, 6)
+                    Self.Scrollbar.Visible = true
+                    Self.Scrollbar.Position = UDim2.fromOffset(View - 3, Top)
+                    Self.Scrollbar.Size = UDim2.fromOffset(2, Thumb)
+                else
+                    Self.Scrollbar.Visible = false
                 end
             end
         end)
@@ -5662,14 +5672,14 @@ do
             Y = math.clamp(math.floor((Screen.Y - Tool.Size.Y) / 2) + Cascade, 26, math.max(26, Screen.Y - Tool.Size.Y)),
         }
 
-        local Root = Instance.new("CanvasGroup")
+        local Root = Instance.new("Frame")
         Root.Name = "\0"
         Root.BackgroundTransparency = 1
         Root.BorderSizePixel = 0
         Root.Position = UDim2.fromOffset(Tool.Position.X, Tool.Position.Y)
         Root.Size = UDim2.fromOffset(Tool.Size.X, Tool.Size.Y)
-        Root.GroupTransparency = 1
         Root.Visible = false
+        Root.Active = true
         Root.ZIndex = 3
         Root.Parent = Library.Layers.Tools.Instance
 
@@ -5842,8 +5852,7 @@ do
             end
 
             Tool.Visible = Fade
-            Root.Visible = Fade > 0.002
-            Root.GroupTransparency = 1 - Fade
+            Root.Visible = Fade > 0.5
 
             if Tool.Visible > 0.002 then
                 local Shown = Tool.Size.Y
