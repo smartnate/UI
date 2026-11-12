@@ -72,11 +72,16 @@ do
 
         FontSize = 10,
         -- Direct TTF sources (writefile -> getcustomasset -> Font.new).
-        -- The repository has no Verdana Bold, so Bold points at the regular
-        -- face until a verdanab.ttf URL is supplied.
+        -- Verdana Bold 700 ships in Alpine/fonts/Verdana-Bold.ttf. Primary host
+        -- is i77lhm/storage (same repo as the other faces); the public corefonts
+        -- mirror is only a fallback until the file is uploaded there.
+        -- Each entry may be a string or a list of URLs tried in order.
         FontSources = {
             Regular = "https://raw.githubusercontent.com/i77lhm/storage/main/fonts/Verdana-Font.ttf",
-            Bold = "https://raw.githubusercontent.com/i77lhm/storage/main/fonts/Verdana-Font.ttf",
+            Bold = {
+                "https://raw.githubusercontent.com/i77lhm/storage/main/fonts/Verdana-Bold.ttf",
+                "https://raw.githubusercontent.com/wolfsonliu/web_typography/master/fonts/verdanab.ttf",
+            },
             Bar = "https://raw.githubusercontent.com/i77lhm/storage/main/fonts/Tahoma-Modern.ttf",
         },
         Font = nil,
@@ -90,6 +95,8 @@ do
         FadeLimit = 90,
 
         DragClaimed = false,
+        ThemeDirty = false,
+        ThemeTimer = 0,
         Scrollbars = {},
         TooltipWatchers = {},
         AccentShines = {},
@@ -137,6 +144,14 @@ do
     function Library:AddUpdate(Function)
         table.insert(Library.Updates, Function)
         return Function
+    end
+
+    function Library:RemoveUpdate(Function)
+        local Index = table.find(Library.Updates, Function)
+
+        if Index then
+            table.remove(Library.Updates, Index)
+        end
     end
 
     function Library:MousePoint()
@@ -402,7 +417,19 @@ do
 
     local function SafeGlobal(Name)
         local Ok, Value = pcall(function()
-            return _G[Name] or (getgenv and getgenv()[Name])
+            if _G then
+                return _G[Name]
+            end
+        end)
+
+        if Ok and Value ~= nil then
+            return Value
+        end
+
+        Ok, Value = pcall(function()
+            if getgenv then
+                return getgenv()[Name]
+            end
         end)
 
         if Ok then
@@ -410,68 +437,92 @@ do
         end
     end
 
+    local function ValidFontBody(Body)
+        if type(Body) ~= "string" or #Body < 2048 then
+            return false
+        end
+
+        local B0, B1, B2, B3 = string.byte(Body, 1, 4)
+
+        -- TrueType 1.0, OpenType CFF ("OTTO"), Apple ("true"), collection ("ttcf")
+        return (B0 == 0 and B1 == 1 and B2 == 0 and B3 == 0)
+            or (B0 == 79 and B1 == 84 and B2 == 84 and B3 == 79)
+            or (B0 == 116 and B1 == 114 and B2 == 117 and B3 == 101)
+            or (B0 == 116 and B1 == 116 and B2 == 99 and B3 == 102)
+    end
+
     local function LoadFace(Name, Weight, Style, Url)
         if not Url or Url == "" then
             return nil
         end
 
-        local Ok, Result = pcall(function()
-            local Write = SafeGlobal("writefile")
-            local IsFile = SafeGlobal("isfile")
-            local Asset = SafeGlobal("getcustomasset")
+        local Urls = type(Url) == "table" and Url or { Url }
+        local Directory = Library.Directory .. Library.Folders.Assets
 
-            if not Write or not IsFile or not Asset then
-                return nil
-            end
+        for _, Link in Urls do
+            local Ok, Result = pcall(function()
+                local Write = SafeGlobal("writefile")
+                local IsFile = SafeGlobal("isfile")
+                local Asset = SafeGlobal("getcustomasset")
 
-            local Directory = Library.Directory .. Library.Folders.Assets
-
-            if not IsFile(Name) then
-                Write(Name, game:HttpGet(Url))
-            end
-
-            local MakeFolder = SafeGlobal("makefolder")
-            local IsFolder = SafeGlobal("isfolder")
-
-            if MakeFolder and IsFolder then
-                if not IsFolder(Library.Directory) then
-                    MakeFolder(Library.Directory)
+                if not Write or not IsFile or not Asset then
+                    return nil
                 end
 
-                if not IsFolder(Directory) then
-                    MakeFolder(Directory)
-                end
-            end
+                local MakeFolder = SafeGlobal("makefolder")
+                local IsFolder = SafeGlobal("isfolder")
 
-            local Data = {
-                name = Name,
-                faces = {
-                    {
-                        name = Name,
-                        weight = Weight,
-                        style = Style,
-                        assetId = Asset(Name),
+                if MakeFolder and IsFolder then
+                    if not IsFolder(Library.Directory) then
+                        MakeFolder(Library.Directory)
+                    end
+
+                    if not IsFolder(Directory) then
+                        MakeFolder(Directory)
+                    end
+                end
+
+                if not IsFile(Name) then
+                    local Body = game:HttpGet(Link)
+
+                    if not ValidFontBody(Body) then
+                        return nil
+                    end
+
+                    Write(Name, Body)
+                end
+
+                local Data = {
+                    name = Name,
+                    faces = {
+                        {
+                            name = Name,
+                            weight = Weight,
+                            style = Style,
+                            assetId = Asset(Name),
+                        },
                     },
-                },
-            }
+                }
 
-            local Path = Directory .. "/" .. Name .. ".font"
-            Write(Path, HttpService:JSONEncode(Data))
+                local Path = Directory .. "/" .. Name .. ".font"
+                Write(Path, HttpService:JSONEncode(Data))
 
-            Library.FontLoaded[Name] = true
+                local Face = Font.new(Asset(Path))
+                Library.FontLoaded[Name] = true
 
-            return Font.new(Asset(Path))
-        end)
+                return Face
+            end)
 
-        if Ok then
-            return Result
+            if Ok and Result then
+                return Result
+            end
         end
     end
 
     Library.Font = LoadFace("Verdana-Regular", 400, "Normal", Library.FontSources.Regular)
         or Font.fromEnum(Enum.Font.Arial)
 
-    Library.BoldFont = LoadFace("Verdana-Bold", 700, "Normal", Library.FontSources.Bold)
+    Library.BoldFont = LoadFace("Verdana-Bold-700", 700, "Normal", Library.FontSources.Bold)
         or Font.fromEnum(Enum.Font.ArialBold)
 
     Library.BarFont = LoadFace("Tahoma-Regular", 400, "Normal", Library.FontSources.Bar)
@@ -500,17 +551,17 @@ do
     Library.GuiInset = GuiInset
 
     local function Layer(Name, Order)
-        local Frame = Instance.new("Frame")
-        Frame.Name = "\0"
-        Frame.BackgroundTransparency = 1
-        Frame.BorderSizePixel = 0
-        Frame.Position = UDim2.fromOffset(0, 0)
-        Frame.Size = UDim2.fromScale(1, 1)
-        Frame.Active = false
-        Frame.ZIndex = Order
-        Frame.Parent = Holder
+        -- one ScreenGui per layer: a whole layer always draws (and receives
+        -- input) above the previous one regardless of nested ZIndex values
+        local Gui = Instance.new("ScreenGui")
+        Gui.Name = "\0"
+        Gui.IgnoreGuiInset = true
+        Gui.ResetOnSpawn = false
+        Gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+        Gui.DisplayOrder = 2147482000 + Order
+        Gui.Parent = gethui()
 
-        local Entry = { Instance = Frame, ZIndex = Order }
+        local Entry = { Instance = Gui, ZIndex = Order }
         Library.Layers[Name] = Entry
 
         return Entry
@@ -620,7 +671,7 @@ do
             return nil
         end
 
-        local Frame = NewFrame(Parent, X1, Y1, X2 - X1 + 1, Y2 - Y1 + 1, Top, Alpha, ZIndex)
+        local Frame = NewFrame(Parent, X1, Y1, X2 - X1 + 1, Y2 - Y1 + 1, Color3.new(1, 1, 1), Alpha, ZIndex)
         local Grand = Instance.new("UIGradient")
         Grand.Name = "\0"
         Grand.Rotation = 90
@@ -638,7 +689,7 @@ do
             return nil
         end
 
-        local Frame = NewFrame(Parent, X1, Y1, X2 - X1 + 1, Y2 - Y1 + 1, Left, Alpha, ZIndex)
+        local Frame = NewFrame(Parent, X1, Y1, X2 - X1 + 1, Y2 - Y1 + 1, Color3.new(1, 1, 1), Alpha, ZIndex)
         local Grand = Instance.new("UIGradient")
         Grand.Name = "\0"
         Grand.Rotation = 0
@@ -771,7 +822,7 @@ do
         Clip.ClipsDescendants = true
 
         local Width = Spread * 2 + 1
-        local Shine = NewFrame(Clip, 0, 0, Width, 1, Style.base, 1, 1)
+        local Shine = NewFrame(Clip, 0, 0, Width, 1, Color3.new(1, 1, 1), 1, 1)
 
         local Grand = Instance.new("UIGradient")
         Grand.Name = "\0"
@@ -1034,37 +1085,43 @@ do
     function Draw.TextWave(Parent, X, CenterY, Base, Peak, String, Kind, Alpha, ZIndex)
         Kind = Kind or "reg"
 
-        local Font = FONTS[Kind]
         local Letters = #String
 
         if Letters == 0 then
             return
         end
 
-        local Head = (os.clock() - Library.StartTime) * 5 % (Letters + 8) - 1.6
         local Cursor = X
         local Labels = {}
 
         for Index = 1, Letters do
             local Char = String:sub(Index, Index)
-            local T = math.clamp(1 - math.abs((Index - 1) - Head) / 1.6, 0, 1)
-            local Smooth = T * T * (3 - 2 * T)
 
-            local Label = Draw.Text(
-                Parent,
-                Cursor,
-                CenterY,
-                LerpColor(Base, Peak, Smooth),
-                Char,
-                Kind,
-                Alpha,
-                ZIndex
-            )
+            local Label = Draw.Text(Parent, Cursor, CenterY, Base, Char, Kind, Alpha, ZIndex)
 
             Cursor = Cursor + Measure(Char, Kind)
 
             table.insert(Labels, Label)
         end
+
+        -- the source animates this every frame; bake a moving highlight
+        local function Animate()
+            if not Labels[1] or not Labels[1].Parent then
+                Library:RemoveUpdate(Animate)
+                return
+            end
+
+            local Head = (os.clock() - Library.StartTime) * 5 % (Letters + 8) - 1.6
+
+            for Index = 1, Letters do
+                local T = math.clamp(1 - math.abs((Index - 1) - Head) / 1.6, 0, 1)
+                local Smooth = T * T * (3 - 2 * T)
+
+                Labels[Index].TextColor3 = LerpColor(Base, Peak, Smooth)
+            end
+        end
+
+        Library:AddUpdate(Animate)
 
         return Labels
     end
@@ -1394,6 +1451,14 @@ do
     local TopBarElements = {}
 
     local function BuildTopBar()
+        if not Library.Layers or not Library.Layers.Overlay then
+            return
+        end
+
+        if TopBarFrame then
+            TopBarFrame:Destroy()
+        end
+
         local DisplaySizeNow = DisplaySize()
         local Width = DisplaySizeNow.X
         local Height = 26
@@ -1437,12 +1502,9 @@ do
             end
 
             local Active = Item.Get()
-            local WidthOf = Measure(Item.Name, "bar")
-            local Label = Draw.Text(Root, X, TextRow, Active and C.text or C.text_title, Item.Name, "bar")
-
-            if Active then
-                Label.FontFace = Library.BoldFont
-            end
+            local Kind = Active and "bold" or "bar"
+            local WidthOf = Measure(Item.Name, Kind)
+            local Label = Draw.Text(Root, X, TextRow, Active and C.text or C.text_title, Item.Name, Kind)
 
             local Hitbox = Instance.new("TextButton")
             Hitbox.Name = "\0"
@@ -1455,15 +1517,14 @@ do
             Hitbox.ZIndex = 4
             Hitbox.Parent = Root
 
-            local Hover = 0
-            local TargetHover = 0
+            local Rest = Active and C.text or C.text_title
 
             Hitbox.MouseEnter:Connect(function()
-                TargetHover = 1
+                Label.TextColor3 = LerpColor(Rest, C.text, 0.4)
             end)
 
             Hitbox.MouseLeave:Connect(function()
-                TargetHover = 0
+                Label.TextColor3 = Rest
             end)
 
             Hitbox.MouseButton1Click:Connect(function()
@@ -1471,37 +1532,42 @@ do
 
                 Item.Set(Value)
 
-                Label.FontFace = Value and Library.BoldFont or Library.Font
-                Label.TextColor3 = Value and C.text or C.text_title
-
                 Library:Notification({
                     Name = "dbxlll",
                     Text = string.lower(Item.Name) .. (Value and " enabled" or " disabled"),
                 })
+
+                -- active items use the bold face, which changes every following
+                -- slot; rebuild once instead of leaving a stale layout
+                task.defer(BuildTopBar)
             end)
-
-            Library:AddUpdate(function(Delta)
-                if Hover == TargetHover then
-                    return
-                end
-
-                Hover = Anim.Approach("topbar_" .. Item.Name, TargetHover, 12, Delta)
-                Label.TextColor3 = LerpColor(LerpColor(C.text_title, C.text_active, Active and 1 or 0), C.text, Hover * 0.4)
-            end)
-
-            if Active then
-                Label.FontFace = Library.BoldFont
-            end
 
             table.insert(TopBarElements, Label)
 
             X = X + WidthOf + SeparatorGap
         end
 
-        local Clock = os.date("%I:%M %p %m/%d/%Y")
+        local Clock = Draw.TextRight(Root, Right - Padding, TextRow, C.text, os.date("%I:%M %p %m/%d/%Y"), "bar")
 
-        Library.TopBarClock = Draw.TextRight(Root, Right - Padding, TextRow, C.text, Clock, "bar")
+        Library.TopBarClock = Clock
+
+        local function Tick()
+            if not Clock.Parent then
+                Library:RemoveUpdate(Tick)
+                return
+            end
+
+            local Text = os.date("%I:%M %p %m/%d/%Y")
+
+            if Clock.Text ~= Text then
+                Clock.Text = Text
+            end
+        end
+
+        Library:AddUpdate(Tick)
     end
+
+    Library.BuildTopBar = BuildTopBar
 
     -- =====================================================================
     -- overlay.cpp — watermark
@@ -2481,7 +2547,7 @@ do
         Hitbox.BackgroundTransparency = 1
         Hitbox.BorderSizePixel = 0
         Hitbox.Position = UDim2.fromOffset(Left, Row - 6)
-        Hitbox.Size = UDim2.fromOffset(METRIC.checkbox_label + Width, 13)
+        Hitbox.Size = UDim2.fromOffset(METRIC.checkbox_label + Width + 1, 14)
         Hitbox.ZIndex = 40
         Hitbox.Parent = Context.Parent
 
@@ -2645,7 +2711,7 @@ do
         local Max = tonumber(Params.Max) or (Range and tonumber(Range[2])) or 100
         local Decimals = tonumber(Params.Decimals) or 0
         local Suffix = Params.Suffix or ""
-        local Value = tonumber(GetFlag(Flag, Params.Default)) or Min
+        local Value = math.clamp(tonumber(GetFlag(Flag, Params.Default)) or Min, Min, Max)
         local Name = tostring(Params.Name or "")
 
         local LabelRow = TakeRow(Context, METRIC.slider_advance)
@@ -2728,13 +2794,17 @@ do
         end
 
         local function SetFromMouse()
+            if Max <= Min then
+                return
+            end
+
             local Mouse = Library:MousePoint()
             local Frac = math.clamp((Mouse.X - (Hitbox.AbsolutePosition.X + 1)) / InnerWidth, 0, 1)
             local Scaled = Min + (Max - Min) * Frac
             local Next
 
             if Decimals > 0 then
-                local Mult = 1 / Decimals
+                local Mult = 10 ^ Decimals
                 Next = math.floor(Scaled * Mult + 0.5) / Mult
             else
                 Next = math.floor(Scaled + 0.5)
@@ -2773,6 +2843,17 @@ do
                 return
             end
 
+            -- a release outside the window can swallow InputEnded; never let a
+            -- slider follow the cursor after the button is already up
+            local Ok, Down = pcall(function()
+                return UserInputService:IsMouseButtonPressed(Enum.UserInputButton.MouseButton1)
+            end)
+
+            if Ok and not Down then
+                Held = false
+                return
+            end
+
             if Input.UserInputType == Enum.UserInputType.MouseMovement
                 or Input.UserInputType == Enum.UserInputType.Touch
             then
@@ -2800,7 +2881,10 @@ do
             Name = Name,
             Flag = Flag,
             Section = SectionRef,
-            Items = {},
+            Items = {
+                Hitbox = { Instance = Hitbox },
+                Fill = { Instance = Fill },
+            },
         }
 
         function Slider:Set(NewValue)
@@ -2850,6 +2934,10 @@ do
             return "-"
         end
 
+        if type(Key) == "string" then
+            return string.lower(Key)
+        end
+
         if Key == Enum.UserInputType.MouseButton1 or Key == Enum.KeyCode.MouseButton1 then
             return "m1"
         elseif Key == Enum.UserInputType.MouseButton2 or Key == Enum.KeyCode.MouseButton2 then
@@ -2860,6 +2948,13 @@ do
 
         local Name = typeof(Key) == "EnumItem" and Key.Name or tostring(Key)
 
+        -- executors expose extra mouse buttons under several names
+        if Name == "MouseButton4" or Name == "MouseX1" then
+            return "m4"
+        elseif Name == "MouseButton5" or Name == "MouseX2" then
+            return "m5"
+        end
+
         return string.lower(KEY_NAMES[Name] or Name)
     end
 
@@ -2869,12 +2964,40 @@ do
         end
 
         if type(Key) == "string" then
+            local Lower = string.lower(Key)
+
+            -- neither Roblox nor every executor has m4/m5 enums; keep the name
+            if Lower == "m4" or Lower == "m5" then
+                return Lower
+            end
+
+            local Name = Key:match("^Enum%.UserInputType%.(.+)$")
+
+            if Name then
+                local OkType, InputType = pcall(function()
+                    return Enum.UserInputType[Name]
+                end)
+
+                if OkType then
+                    return InputType
+                end
+            end
+
+            local CodeName = Key:match("^Enum%.KeyCode%.(.+)$")
             local Ok, EnumItem = pcall(function()
-                return Enum.KeyCode[Key]
+                return Enum.KeyCode[CodeName or Key]
             end)
 
-            if Ok then
+            if Ok and EnumItem ~= Enum.KeyCode.Unknown then
                 return EnumItem
+            end
+
+            local OkInput, InputType = pcall(function()
+                return Enum.UserInputType[Key]
+            end)
+
+            if OkInput then
+                return InputType
             end
         end
 
@@ -2952,20 +3075,8 @@ do
         Clip.ZIndex = 4
         Clip.Parent = Context.Parent
 
-        local PreviewLabel = Instance.new("TextLabel")
-        PreviewLabel.Name = "\0"
-        PreviewLabel.BackgroundTransparency = 1
-        PreviewLabel.BorderSizePixel = 0
-        PreviewLabel.FontFace = FONTS.reg.face
-        PreviewLabel.TextSize = FONTS.reg.size
-        PreviewLabel.TextColor3 = C.text
-        PreviewLabel.TextXAlignment = Enum.TextXAlignment.Left
-        PreviewLabel.TextYAlignment = Enum.TextYAlignment.Center
-        PreviewLabel.Text = ""
-        PreviewLabel.Position = UDim2.fromOffset(METRIC.combo_text_indent, 0)
-        PreviewLabel.Size = UDim2.fromOffset(Right - Left, METRIC.combo_height)
-        PreviewLabel.ZIndex = 4
-        PreviewLabel.Parent = Clip
+        local PreviewLabel
+
 
         local ArrowHolder = Instance.new("Frame")
         ArrowHolder.Name = "\0"
@@ -3031,8 +3142,22 @@ do
         local function RefreshPreview()
             local Text, Color = PreviewText()
 
-            PreviewLabel.Text = Text
-            PreviewLabel.TextColor3 = Color
+            -- a raw TextLabel centers on the font line height, which sits low
+            -- inside the 16px track; Draw.Text uses the source's row math
+            if PreviewLabel then
+                PreviewLabel:Destroy()
+            end
+
+            PreviewLabel = Draw.Text(
+                Clip,
+                METRIC.combo_text_indent - 1,
+                math.floor(METRIC.combo_height / 2),
+                Color,
+                Text,
+                "reg",
+                1,
+                4
+            )
         end
 
         local function DrawArrow()
@@ -3060,7 +3185,7 @@ do
 
             local DisplaySizeNow = DisplaySize()
             local X = Hitbox.AbsolutePosition.X
-            local Y = Hitbox.AbsolutePosition.Y + METRIC.combo_height + 2
+            local Y = Hitbox.AbsolutePosition.Y + METRIC.combo_height - 1 + 2
             local Width = Right - Left + 1
 
             PopupAbove = false
@@ -3137,6 +3262,7 @@ do
                 Button.MouseButton1Click:Connect(function()
                     if Multi then
                         Selected[Item] = not Selected[Item]
+                        Pick = Selected[Item] and 1 or 0
 
                         local Out = {}
 
@@ -3277,6 +3403,7 @@ do
             ClosePopup()
         end
 
+        SetFlag(Flag, Selected)
         RefreshPreview()
         DrawArrow()
 
@@ -3626,8 +3753,8 @@ do
             local DisplaySizeNow = DisplaySize()
             local Width = METRIC.key_mode_width
             local Height = 3 * METRIC.dropdown_item + 2
-            local X = Hitbox.AbsolutePosition.X + (Right - Left + 1) - Width + 1
-            local Y = Hitbox.AbsolutePosition.Y + METRIC.keybind_height + 2
+            local X = Hitbox.AbsolutePosition.X + (Right - Left + 1) - Width
+            local Y = Hitbox.AbsolutePosition.Y + METRIC.keybind_height - 1 + 2
 
             if Y + Height > DisplaySizeNow.Y then
                 Y = Hitbox.AbsolutePosition.Y - Height - 1
@@ -3713,13 +3840,6 @@ do
                 return
             end
 
-            if Input.UserInputType == Enum.UserInputType.MouseButton1
-                or Input.UserInputType == Enum.UserInputType.MouseButton2
-                or Input.UserInputType == Enum.UserInputType.MouseButton3
-            then
-                return
-            end
-
             if Input.UserInputType == Enum.UserInputType.Keyboard then
                 if Input.KeyCode == Enum.KeyCode.Escape then
                     Key = Enum.KeyCode.Unknown
@@ -3732,6 +3852,21 @@ do
 
                 Store()
                 Paint()
+            else
+                -- bind mouse buttons too (m1..m5 depending on the executor)
+                local Formatted = Library.FormatKey(Input.UserInputType)
+
+                if Formatted == "m1" or Formatted == "m2" or Formatted == "m3"
+                    or Formatted == "m4" or Formatted == "m5"
+                then
+                    Key = Input.UserInputType
+
+                    Listening = false
+                    ListeningKeybind = nil
+
+                    Store()
+                    Paint()
+                end
             end
         end)
 
@@ -4364,7 +4499,7 @@ do
 
         local ContainerContext = ContextValues(
             METRIC.content_inset,
-            Width - METRIC.popup_right_inset,
+            Width - 1 - METRIC.popup_right_inset,
             METRIC.popup_first_row,
             METRIC.popup_title_offset
         )
@@ -5338,8 +5473,10 @@ do
                     local Range = Total - View
                     local Top = 2 + math.floor((Track - Thumb) * math.clamp(Self.Scroll / Range, 0, 1) + 0.5)
 
+                    local BarX = Self.ContentRight - Self.ContentLeft - 2
+
                     Self.Scrollbar.Visible = true
-                    Self.Scrollbar.Position = UDim2.fromOffset(View - 3, Top)
+                    Self.Scrollbar.Position = UDim2.fromOffset(BarX, Top)
                     Self.Scrollbar.Size = UDim2.fromOffset(2, Thumb)
                 else
                     Self.Scrollbar.Visible = false
@@ -6119,8 +6256,12 @@ do
             local Frac = math.clamp((Mouse.X - (GlowHitbox.AbsolutePosition.X + 1)) / WidthInner, 0, 1)
 
             Library.Theme["Menu Glow"] = Frac * 2
-            Library:ChangeTheme("Menu Glow", Frac * 2)
-            BuildColorsBody(Tool)
+            Library:SetThemeValue("Menu Glow", Frac * 2)
+
+            GlowFilled.Size = UDim2.fromOffset(
+                math.max(1, math.floor(WidthInner * Frac)),
+                METRIC.slider_height - 2
+            )
         end
 
         GlowHitbox.InputBegan:Connect(function(Input)
@@ -6173,7 +6314,7 @@ do
             local WidthPopup = Context.Right - Context.Left + 1
             local HeightPopup = #Library.PresetOrder * METRIC.dropdown_item + 2
             local X = PresetBox.AbsolutePosition.X
-            local Y = PresetBox.AbsolutePosition.Y + METRIC.combo_height + 2
+            local Y = PresetBox.AbsolutePosition.Y + METRIC.combo_height - 1 + 2
 
             local Popup = Instance.new("Frame")
             Popup.Name = "\0"
@@ -6583,20 +6724,10 @@ do
     -- themes
     -- =====================================================================
 
-    function Library:SetThemeValue(Key, Color)
-        if Library.Theme[Key] ~= nil then
-            Library.Theme[Key] = Color
-        end
+    -- rebuild every window surface that painted with the old palette
+    function Library:RefreshTheme(Skip)
+        Skip = Skip or {}
 
-        ThemeApply()
-    end
-
-    function Library:ChangeTheme(Key, Color)
-        if Library.Theme[Key] == nil then
-            return
-        end
-
-        Library.Theme[Key] = Color
         ThemeApply()
 
         for _, WindowRef in Library.Windows do
@@ -6606,6 +6737,52 @@ do
                 SectionRef:Rebuild()
             end
         end
+
+        for Key, Tool in Library.Tools do
+            if not Skip[Key] then
+                if Tool.Shell then
+                    Tool.Shell()
+                end
+
+                if Tool.Build then
+                    Tool.Build()
+                end
+            end
+        end
+
+        if Library.BuildTopBar then
+            Library.BuildTopBar()
+        end
+
+        if Library.WatermarkObject then
+            Library.WatermarkObject:SetSubText(Library.WatermarkObject.SubName)
+        end
+
+        if Library.KeyList then
+            Library.KeyList:Refresh()
+        end
+    end
+
+    function Library:SetThemeValue(Key, Color)
+        if Library.Theme[Key] ~= nil then
+            Library.Theme[Key] = Color
+        end
+
+        ThemeApply()
+
+        -- live theme editing: coalesce the rebuild to one per frame at most
+        Library.ThemeDirty = true
+    end
+
+    function Library:ChangeTheme(Key, Color)
+        if Library.Theme[Key] == nil then
+            return
+        end
+
+        Library.Theme[Key] = Color
+        Library.ThemeDirty = false
+
+        Library:RefreshTheme()
     end
 
     function Library:SetTheme(Name)
@@ -6620,16 +6797,9 @@ do
         end
 
         Library.CurrentTheme = Name
+        Library.ThemeDirty = false
 
-        ThemeApply()
-
-        for _, WindowRef in Library.Windows do
-            WindowRef:Build()
-
-            for _, SectionRef in WindowRef.Sections do
-                SectionRef:Rebuild()
-            end
-        end
+        Library:RefreshTheme()
 
         if Library.WatermarkObject then
             Library.WatermarkObject:SetSubText(Library.WatermarkObject.SubName)
@@ -6861,6 +7031,12 @@ do
             Library.Holder.Instance:Destroy()
         end)
 
+        for _, Entry in Library.Layers do
+            pcall(function()
+                Entry.Instance:Destroy()
+            end)
+        end
+
         Library.Holder = nil
         Library.Layers = {}
         Library.Windows = {}
@@ -6992,6 +7168,132 @@ do
         return Widgets.Popup(B or {}, nil)
     end
 
+    -- =====================================================================
+    -- diagnostics (fonts + FPS)
+    -- =====================================================================
+
+    function Library:GetFontStatus()
+        if self ~= Library then
+            return Library:GetFontStatus()
+        end
+
+        local Regular = Library.FontLoaded["Verdana-Regular"] == true
+        local Bold = Library.FontLoaded["Verdana-Bold-700"] == true
+        local Bar = Library.FontLoaded["Tahoma-Regular"] == true
+
+        local Count = (Regular and 1 or 0) + (Bold and 1 or 0) + (Bar and 1 or 0)
+
+        return {
+            Fps = math.floor((Library.FpsValue or 0) + 0.5),
+            Regular = Regular and "Verdana (custom)" or "Arial (fallback)",
+            Bold = Bold and "Verdana Bold (custom)" or "ArialBold (fallback)",
+            Bar = Bar and "Tahoma (custom)" or "Arial (fallback)",
+            RegularLoaded = Regular,
+            BoldLoaded = Bold,
+            BarLoaded = Bar,
+            Loaded = Count,
+            Total = 3,
+        }
+    end
+
+    function Library:Diagnostics()
+        if self ~= Library then
+            return Library:Diagnostics()
+        end
+
+        if Library.DiagnosticTool then
+            Library.DiagnosticTool:Toggle()
+            return Library.DiagnosticTool
+        end
+
+        local Tool = CreateToolWindow({
+            id = "diagnostics",
+            title = "Diagnostics",
+            size = { 330, 140 },
+            min = { 250, 120 },
+            opening = "fade",
+        }, 8)
+
+        local Screen = DisplaySize()
+
+        Tool.Position = {
+            X = math.floor((Screen.X - Tool.Size.X) / 2),
+            Y = 32,
+        }
+
+        Tool.Root.Position = UDim2.fromOffset(Tool.Position.X, Tool.Position.Y)
+
+        local Labels = {}
+        local Timer = 0
+
+        local function Value(Index, Text, Color)
+            local Label = Labels[Index]
+
+            if Label and Label.Parent and Label.Text ~= Text then
+                Label.Text = Text
+                Label.TextColor3 = Color
+            end
+        end
+
+        local function Build()
+            local Width = Tool.Size.X - 12
+            local Height = Tool.Size.Y - 36
+
+            Tool.Body:ClearAllChildren()
+
+            Labels = {}
+
+            Draw.FrameBox(Tool.Body, 5, 5, Width - 6, Height - 6, C.panel_fill)
+
+            local Rows = {
+                { "fps", "0" },
+                { "regular", "-" },
+                { "bold", "-" },
+                { "bar", "-" },
+                { "faces", "-" },
+            }
+
+            for Index, Row in Rows do
+                local Y = 12 + (Index - 1) * 16
+
+                Draw.Text(Tool.Body, 10, Y, C.text_dim, Row[1])
+                Labels[Index] = Draw.Text(Tool.Body, 92, Y, C.text, Row[2], "reg", 1, 3)
+            end
+        end
+
+        Tool.Build = Build
+
+        Build()
+
+        Library:AddUpdate(function(Delta)
+            if not Tool.Root.Parent or not Tool.Open then
+                return
+            end
+
+            Timer = Timer + Delta
+
+            if Timer < 0.25 then
+                return
+            end
+
+            Timer = 0
+
+            local Status = Library:GetFontStatus()
+
+            Value(1, tostring(Status.Fps), C.text)
+            Value(2, Status.Regular, Status.RegularLoaded and C.text or C.text_dim)
+            Value(3, Status.Bold, Status.BoldLoaded and C.text or C.text_dim)
+            Value(4, Status.Bar, Status.BarLoaded and C.text or C.text_dim)
+            Value(5, string.format("%d/%d custom", Status.Loaded, Status.Total), C.text)
+        end)
+
+        Library.DiagnosticTool = Tool
+
+        Tool:SetVisibility(true)
+
+        return Tool
+    end
+
     Library:Watermark({ Name = "dbxlll", SubName = "build: footjob" })
     Library:KeybindList({ Name = "Keybind" })
     Library:TargetHUD({ Name = "ext", Health = 100, MaxHealth = 100 })
@@ -7040,6 +7342,19 @@ do
             if not Ok then
                 warn("[Library] " .. tostring(Err))
                 table.remove(Library.Updates, Index)
+            end
+        end
+
+        if Library.ThemeDirty then
+            Library.ThemeTimer = (Library.ThemeTimer or 0) + Delta
+
+            if Library.ThemeTimer >= 0.2 then
+                Library.ThemeTimer = 0
+                Library.ThemeDirty = false
+
+                -- live palette edits repaint every surface except the colors
+                -- tool itself, so the control being dragged is never rebuilt
+                Library:RefreshTheme({ themes = true })
             end
         end
 
