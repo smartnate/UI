@@ -12283,7 +12283,15 @@ end
 			Pad.PaddingLeft = UDim.new(0, 1)
 			Pad.PaddingRight = UDim.new(0, 1)
 
-			Line(Pages, 1, Skin.TabAccent, 2)
+			-- accent is a sibling, not a Pages child (Pages has a UIListLayout)
+			Library:Create("Frame", {
+				Parent = Main,
+				Position = UDim2.new(0, 17, 0, 45),
+				Size = UDim2.new(1, -34, 0, 2),
+				BackgroundColor3 = Skin.TabAccent,
+				BorderSizePixel = 0,
+				ZIndex = 4,
+			})
 
 			return Window
 		end
@@ -12300,7 +12308,9 @@ end
 			local PageFrame = Page.Items["Page"].Instance
 			local PageList = PageFrame:FindFirstChildOfClass("UIListLayout")
 			if PageList then
-				PageList.Enabled = false
+				-- UIListLayout has no Enabled property; remove it so the
+				-- columns can use the exact native positions below.
+				PageList.Parent = nil
 			end
 
 			local Left = Page.Items["LeftColumn"].Instance
