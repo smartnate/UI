@@ -416,7 +416,11 @@ do
 
 				writefile(Path, HttpService:JSONEncode(Description))
 
-				return Font.new(getcustomasset(Path))
+				return Font.new(
+					getcustomasset(Path),
+					Weight >= 700 and Enum.FontWeight.Bold or Enum.FontWeight.Regular,
+					Style == "italic" and Enum.FontStyle.Italic or Enum.FontStyle.Normal
+				)
 			end
 
 			local function PixelFont(CacheName, Family, FaceName, Weight, Style, Url)
@@ -495,11 +499,13 @@ do
 
 			local Base = "https://raw.githubusercontent.com/smartnate/UI/main/upload/"
 
-			Library.Font = PixelFont("AlpineVerdanaPixel-Regular", "AlpineVerdanaPixel", "Regular", 400, "normal", Base .. "VerdanaPixel-Regular.ttf")
+			-- v2 cache names force clients that cached an older TTF/font descriptor
+			-- to rebuild it once instead of keeping stale glyphs forever.
+			Library.Font = PixelFont("AlpineVerdanaPixel-v2-Regular", "AlpineVerdanaPixelV2", "Regular", 400, "normal", Base .. "VerdanaPixel-Regular.ttf")
 				or Font.fromEnum(Enum.Font.Arial)
-			Library.BoldFont = PixelFont("AlpineVerdanaPixel-Bold", "AlpineVerdanaPixelBold", "Bold", 700, "normal", Base .. "VerdanaPixel-Bold.ttf")
+			Library.BoldFont = PixelFont("AlpineVerdanaPixel-v2-Bold", "AlpineVerdanaPixelV2Bold", "Bold", 700, "normal", Base .. "VerdanaPixel-Bold.ttf")
 				or Font.fromEnum(Enum.Font.ArialBold)
-			Library.BarFont = PixelFont("AlpineTahomaPixel-Bar", "AlpineTahomaPixel", "Regular", 400, "normal", Base .. "TahomaPixel-Bar.ttf")
+			Library.BarFont = PixelFont("AlpineTahomaPixel-v2-Bar", "AlpineTahomaPixelV2", "Regular", 400, "normal", Base .. "TahomaPixel-Bar.ttf")
 				or Font.fromEnum(Enum.Font.Arial)
 			Library.BarFontSize = 13
 
@@ -2222,7 +2228,7 @@ do
 					VerticalAlignment = Enum.VerticalAlignment.Center,
 					FillDirection = Enum.FillDirection.Horizontal,
 					HorizontalAlignment = Enum.HorizontalAlignment.Right,
-					Padding = UDim.new(0, 5),
+					Padding = UDim.new(0, 4),
 					SortOrder = Enum.SortOrder.LayoutOrder
 				})
 
@@ -4429,7 +4435,7 @@ do
 				local Key = Keybind.Picking and "Accent" or (Bound and "Text" or "Inactive Text")
 
 				Items["KeyButton"].Instance.TextSize = Library.FontSize
-				Items["KeyButton"].Instance.Text = "[" .. ((Bound and not Keybind.Picking) and Keybind.Value or "...") .. "]"
+				Items["KeyButton"].Instance.Text = (Bound and not Keybind.Picking) and Keybind.Value or "..."
 
 				Items["KeyButton"]:ChangeItemTheme({TextColor3 = Key})
 				Items["KeyButton"]:Tween({TextColor3 = Library.Theme[Key]})
@@ -4829,8 +4835,8 @@ do
 					Name = "\0",
 					Parent = Items["MainFrame"].Instance,
 					BackgroundTransparency = 1,
-					Position = UDim2.new(0, 17, 0, 44),
-					Size = UDim2.new(1, -34, 0, 24),
+					Position = UDim2.new(0, 13, 0, 39),
+					Size = UDim2.new(1, -26, 0, 24),
 					BorderSizePixel = 0
 				})
 
@@ -4845,8 +4851,8 @@ do
 				Items["Content"] = Library:Create("Frame", {
 					Name = "\0",
 					Parent = Items["MainFrame"].Instance,
-					Position = UDim2.new(0, 17, 0, 72),
-					Size = UDim2.new(1, -34, 1, -81),
+					Position = UDim2.new(0, 13, 0, 67),
+					Size = UDim2.new(1, -26, 1, -80),
 					BorderSizePixel = 0,
 					BackgroundColor3 = Library.Theme["Content"]
 				}):AddToTheme({BackgroundColor3 = 'Content'})
@@ -5510,7 +5516,7 @@ do
 				Library:Create("UIListLayout", {
 					Name = "\0",
 					Parent = Items["LeftColumn"].Instance,
-					Padding = UDim.new(0, 5),
+					Padding = UDim.new(0, 4),
 					SortOrder = Enum.SortOrder.LayoutOrder
 				})
 
@@ -5539,7 +5545,7 @@ do
 				Library:Create("UIListLayout", {
 					Name = "\0",
 					Parent = Items["RightColumn"].Instance,
-					Padding = UDim.new(0, 5),
+					Padding = UDim.new(0, 4),
 					SortOrder = Enum.SortOrder.LayoutOrder
 				})
 
@@ -5570,7 +5576,7 @@ do
 					Old.Items["Text"]:ChangeItemTheme({TextColor3 = "Inactive Text"})
 					Old.Items["Text"]:Tween({TextColor3 = Library.Theme["Inactive Text"]})
 
-					Old.Items["Inactive"]:Tween({BackgroundColor3 = Library.Theme["Inline"]})
+					Old.Items["Inactive"]:Tween({BackgroundColor3 = Library.Theme["Tab Fill Top"]})
 
 					if Old.Items["Shade"] then
 						Old.Items["Shade"].Instance.Color = ColorSequence.new{
@@ -5579,7 +5585,7 @@ do
 						}
 					end
 
-					Old.Items["Inactive"].Instance.Size = UDim2.new(1 / math.max(#Page.Window.Pages, 1), 0, 1, 0)
+					
 					Old.Items["Text"].Instance.Position = UDim2.new(0.5, 0, 0.5, 0)
 
 					Old.Items["Page"]:FadeDescendants(false, function()
@@ -5593,10 +5599,10 @@ do
 					Page.Debounce = false
 				end)
 
-				Items["Text"]:ChangeItemTheme({TextColor3 = "Accent"})
-				Items["Text"]:Tween({TextColor3 = Library.Theme.Accent})
+				Items["Text"]:ChangeItemTheme({TextColor3 = "Tab Selected"})
+				Items["Text"]:Tween({TextColor3 = Library.Theme["Tab Selected"]})
 
-				Items["Inactive"]:Tween({BackgroundColor3 = Library.Theme["Hovered Element"]})
+				Items["Inactive"]:Tween({BackgroundColor3 = Library.Theme["Tab Fill Top"]})
 
 				if Items["Shade"] then
 					Items["Shade"].Instance.Color = ColorSequence.new{
@@ -5606,7 +5612,7 @@ do
 					}
 				end
 
-				Items["Inactive"].Instance.Size = UDim2.new(1 / math.max(#Page.Window.Pages, 1), 0, 1, 0)
+				
 				Items["Text"].Instance.Position = UDim2.new(0.5, 0, 0.5, 0)
 
 				Page.Window.Current = Page
@@ -5757,7 +5763,7 @@ do
 					local Content = Items["Content"].Instance
 
 					local function ResizeContent()
-						Content.Size = UDim2.new(1, -12, 0, math.min(Layout.AbsoluteContentSize.Y, MaxHeight) + ExtraHeight)
+						Content.Size = UDim2.new(1, -12, 0, math.min(Layout.AbsoluteContentSize.Y + 6, MaxHeight + 6) + ExtraHeight)
 					end
 
 					Library:Connect(Layout:GetPropertyChangedSignal("AbsoluteContentSize"), ResizeContent)
@@ -12007,7 +12013,7 @@ end
 					["Fill Bottom"] = C(Data[16]),
 					["Tab Fill Top"] = Color3.fromRGB(17, 20, 18),
 					["Tab Fill Bottom"] = Color3.fromRGB(15, 17, 16),
-					["Tab Selected"] = Color3.fromRGB(70, 65, 69),
+					["Tab Selected"] = Color3.fromRGB(246, 248, 248),
 					["Tab Accent"] = Color3.fromRGB(56, 52, 60),
 				}
 			end
@@ -12044,11 +12050,49 @@ end
 		-- Alpine exact skin (visual post-pass; Vitality behaviour untouched)
 		-- ================================================================
 
+		-- Vitality attaches a 1px UIStroke to text for its old drop-shadow look.
+		-- That stroke antialiases as a second, offset copy of every glyph on the
+		-- pixel font, which is what made the title and labels look doubled.
+		-- Thickness 0 alone is not enough if something later tweens the stroke
+		-- back in, so text strokes are made fully transparent at creation too.
+		local BaseSkinCreate = Library.Create
+
+		Library.Create = function(Self, Class, Properties)
+			local Item = BaseSkinCreate(Self, Class, Properties)
+			local Object = Item and Item.Instance
+
+			if not Object then
+				return Item
+			end
+
+			if Object:IsA("TextLabel") or Object:IsA("TextButton") or Object:IsA("TextBox") then
+				Object.TextScaled = false
+				Object.TextStrokeTransparency = 1
+
+				for _, Child in ipairs(Object:GetChildren()) do
+					if Child:IsA("UIStroke") then
+						Child.Thickness = 0
+						Child.Transparency = 1
+					end
+				end
+			elseif Object:IsA("UIStroke") then
+				local Parent = Object.Parent
+
+				if Parent and (Parent:IsA("TextLabel") or Parent:IsA("TextButton") or Parent:IsA("TextBox")) then
+					Object.Thickness = 0
+					Object.Transparency = 1
+				end
+			end
+
+			return Item
+		end
+
 		local Skin = {
 			Black = Color3.fromRGB(0, 0, 0),
 			WindowBand = Color3.fromRGB(22, 19, 21),
 			WindowEdge = Color3.fromRGB(70, 62, 70),
 			Content = Color3.fromRGB(16, 16, 16),
+			Backdrop = Color3.fromRGB(15, 15, 15),
 			Panel = Color3.fromRGB(13, 16, 15),
 			PanelLight = Color3.fromRGB(32, 32, 33),
 			TitleText = Color3.fromRGB(205, 207, 206),
@@ -12063,6 +12107,10 @@ end
 			TabTop = Color3.fromRGB(17, 20, 18),
 			TabBottom = Color3.fromRGB(15, 17, 16),
 			TabAccent = Color3.fromRGB(56, 52, 60),
+			TabAccentBottom = Color3.fromRGB(51, 49, 54),
+			TabSelected = Color3.fromRGB(70, 65, 69),
+			InputTop = Color3.fromRGB(27, 30, 29),
+			InputBottom = Color3.fromRGB(19, 21, 21),
 			CheckTop = Color3.fromRGB(24, 26, 26),
 			CheckBottom = Color3.fromRGB(15, 17, 16),
 			CheckedTop = Color3.fromRGB(56, 57, 61),
@@ -12150,8 +12198,34 @@ end
 				})
 			end
 
+			-- native backdrop frame: 7px inset, under the header and content
+			local Backdrop = Library:Create("Frame", {
+				Parent = Main,
+				Position = UDim2.new(0, 7, 0, 28),
+				Size = UDim2.new(0, 630, 0, 627),
+				BackgroundColor3 = Skin.Backdrop,
+				BorderSizePixel = 0,
+				ZIndex = 0,
+			})
+
+			Library:Create("UIStroke", {
+				Parent = Backdrop.Instance,
+				Color = Skin.Black,
+				Thickness = 1,
+			})
+
+			Library:Create("Frame", {
+				Parent = Backdrop.Instance,
+				Position = UDim2.new(0, 1, 0, 1),
+				Size = UDim2.new(1, -2, 1, -2),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 1,
+				BorderColor3 = Skin.PanelLight,
+				ZIndex = 0,
+			})
+
 			Title.Instance.BackgroundColor3 = Skin.WindowBand
-			Title.Instance.Position = UDim2.new(0, 0, 0, 1)
+			Title.Instance.Position = UDim2.new(0, 0, 0, 0)
 			Title.Instance.Size = UDim2.new(1, 0, 0, 33)
 
 			for _, Child in ipairs(Title.Instance:GetChildren()) do
@@ -12159,15 +12233,15 @@ end
 			end
 
 			for _, Box in ipairs({
-				{ 12, 140 },
-				{ 156, 331 },
-				{ 492, 141 },
+				{ 8, 140 },
+				{ 152, 331 },
+				{ 488, 141 },
 			}) do
 				local Frame = Library:Create("Frame", {
 					Name = "HeaderBox",
 					Parent = Title.Instance,
-					Position = UDim2.new(0, Box[1], 0, 11),
-					Size = UDim2.new(0, Box[2], 0, 21),
+					Position = UDim2.new(0, Box[1], 0, 7),
+					Size = UDim2.new(0, Box[2], 0, 22),
 					BackgroundColor3 = Skin.HeaderTop,
 					BorderSizePixel = 0,
 					ZIndex = 4,
@@ -12216,7 +12290,7 @@ end
 					if string.sub(Row, Column, Column) == "#" then
 						Library:Create("Frame", {
 							Parent = Title.Instance,
-							Position = UDim2.new(0, 56 + Column, 0, 16 + RowIndex),
+							Position = UDim2.new(0, 51 + Column, 0, 12 + RowIndex),
 							Size = UDim2.new(0, 1, 0, 1),
 							BackgroundColor3 = Skin.Text,
 							BorderSizePixel = 0,
@@ -12233,7 +12307,7 @@ end
 				Text = Window.UserName .. " | " .. Window.BuildDate,
 				TextColor3 = Skin.Text,
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 156, 0, 13),
+				Position = UDim2.new(0, 152, 0, 9),
 				Size = UDim2.new(0, 331, 0, 16),
 				TextXAlignment = Enum.TextXAlignment.Center,
 				BorderSizePixel = 0,
@@ -12247,7 +12321,7 @@ end
 				Text = Window.BuildType,
 				TextColor3 = Skin.Text,
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 492, 0, 13),
+				Position = UDim2.new(0, 488, 0, 9),
 				Size = UDim2.new(0, 141, 0, 16),
 				TextXAlignment = Enum.TextXAlignment.Center,
 				BorderSizePixel = 0,
@@ -12260,6 +12334,17 @@ end
 				Parent = Content,
 				Color = Skin.Black,
 				Thickness = 1,
+			})
+
+			-- native content frame: black outline, inner frame-light line
+			Library:Create("Frame", {
+				Parent = Content,
+				Position = UDim2.new(0, 1, 0, 1),
+				Size = UDim2.new(1, -2, 1, -2),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 1,
+				BorderColor3 = Skin.PanelLight,
+				ZIndex = 0,
 			})
 
 			Pages.BackgroundColor3 = Skin.Black
@@ -12280,12 +12365,21 @@ end
 			Pad.PaddingLeft = UDim.new(0, 1)
 			Pad.PaddingRight = UDim.new(0, 1)
 
-			-- accent is a sibling, not a Pages child (Pages has a UIListLayout)
+			-- two native accent rows at the top of the 24px tab bar
 			Library:Create("Frame", {
 				Parent = Main,
-				Position = UDim2.new(0, 17, 0, 45),
-				Size = UDim2.new(1, -34, 0, 2),
+				Position = UDim2.new(0, 13, 0, 40),
+				Size = UDim2.new(1, -26, 0, 1),
 				BackgroundColor3 = Skin.TabAccent,
+				BorderSizePixel = 0,
+				ZIndex = 4,
+			})
+
+			Library:Create("Frame", {
+				Parent = Main,
+				Position = UDim2.new(0, 13, 0, 41),
+				Size = UDim2.new(1, -26, 0, 1),
+				BackgroundColor3 = Skin.TabAccentBottom,
 				BorderSizePixel = 0,
 				ZIndex = 4,
 			})
@@ -12314,9 +12408,20 @@ end
 			local Right = Page.Items["RightColumn"].Instance
 
 			Left.Position = UDim2.new(0, 6, 0, 0)
-			Left.Size = UDim2.new(0, 300, 1, 0)
+			Left.Size = UDim2.new(0, 301, 1, 0)
 			Right.Position = UDim2.new(0, 311, 0, 0)
-			Right.Size = UDim2.new(0, 300, 1, 0)
+			Right.Size = UDim2.new(0, 301, 1, 0)
+
+			for _, Column in ipairs({ Left, Right }) do
+				local ColumnLayout = Column:FindFirstChildOfClass("UIListLayout")
+
+				if ColumnLayout then
+					ColumnLayout.Padding = UDim.new(0, 4)
+				end
+			end
+
+			-- native separators: 17, 141, 264, 387, 510, 634
+			local TabWidths = { 123, 123, 123, 123, 124 }
 
 			for Index, Other in ipairs(Self.Pages) do
 				local Tab = Other.Items["Inactive"]
@@ -12324,7 +12429,12 @@ end
 				if Tab then
 					local Instance = Tab.Instance
 
-					Instance.Size = UDim2.new(1 / Count, 0, 1, 0)
+					if Count == 5 then
+						Instance.Size = UDim2.new(0, TabWidths[Index] or 123, 1, 0)
+					else
+						Instance.Size = UDim2.new(1 / Count, 0, 1, 0)
+					end
+
 					Instance.AutomaticSize = Enum.AutomaticSize.None
 					Instance.BackgroundColor3 = Skin.TabTop
 					RemoveStrokes(Instance)
@@ -12369,13 +12479,14 @@ end
 		-- ----------------------------------------------------------------
 		-- sections: native panel heights, 25px flat header, zero row gap
 		-- ----------------------------------------------------------------
+		-- native panel_rect coordinates are inclusive; +1 gives the pixel height
 		local SectionHeights = {
-			["Aimbot"] = 412,
-			["Orbit"] = 153,
-			["Silent Aim"] = 358,
-			["Triggerbot"] = 167,
-			["Visuals"] = 178,
-			["Settings"] = 140,
+			["Aimbot"] = 413,
+			["Orbit"] = 154,
+			["Silent Aim"] = 359,
+			["Triggerbot"] = 168,
+			["Visuals"] = 179,
+			["Settings"] = 141,
 		}
 
 		local BaseSkinSection = Library.Section
@@ -12432,7 +12543,7 @@ end
 			}) do
 				Library:Create("Frame", {
 					Parent = Header,
-					Position = UDim2.new(0, 0, 0, Index - 1),
+					Position = UDim2.new(0, 0, 0, Index),
 					Size = UDim2.new(1, 0, 0, 1),
 					BackgroundColor3 = Color,
 					BorderSizePixel = 0,
@@ -12442,17 +12553,22 @@ end
 
 			local Title = Section.Items["Text"]
 			if Title then
-				Title.Instance.Position = UDim2.new(0, 6, 0, 10)
+				Title.Instance.AnchorPoint = Vector2.new(0, 0.5)
+				Title.Instance.Position = UDim2.new(0, 6, 0, 11)
 				Title.Instance.Size = UDim2.new(1, -12, 0, 14)
 				Title.Instance.TextXAlignment = Enum.TextXAlignment.Left
+				Title.Instance.TextYAlignment = Enum.TextYAlignment.Center
 				Title.Instance.FontFace = Library.Font
 				Title.Instance.TextSize = 12
 				Title.Instance.TextColor3 = Skin.TitleText
 				RemoveStrokes(Title.Instance)
 			end
 
-			Content.Position = UDim2.new(0, 6, 0, 25)
-			Content.Size = UDim2.new(1, -12, 0, Content.Size.Y.Offset)
+			-- the native panel starts its rows at top+25, while its first 10px
+			-- checkbox/keybind box can reach 6px above that row. Start the clip
+			-- at +19 with 6px of top padding so both are reproduced exactly.
+			Content.Position = UDim2.new(0, 6, 0, 19)
+			Content.Size = UDim2.new(1, -12, 0, Content.Size.Y.Offset + 6)
 
 			local ContentLayout = Section.Items["ContentLayout"]
 			if ContentLayout then
@@ -12461,12 +12577,14 @@ end
 
 			local ContentPadding = Section.Items["ContentPadding"]
 			if ContentPadding then
+				ContentPadding.Instance.PaddingTop = UDim.new(0, 6)
 				ContentPadding.Instance.PaddingBottom = UDim.new(0, 0)
 			end
 
 			if Height then
 				Instance.AutomaticSize = Enum.AutomaticSize.None
 				Instance.Size = UDim2.new(1, 0, 0, Height)
+				Content.Size = UDim2.new(1, -12, 0, Height - 19)
 			end
 
 			return Section
@@ -12484,6 +12602,8 @@ end
 			if Items then
 				local Indicator = Items["Indicator"] and Items["Indicator"].Instance
 				if Indicator then
+					-- native checkbox is row-5 .. row+4
+					Indicator.Position = UDim2.new(0, 0, 0, -5)
 					Indicator.BackgroundColor3 = Skin.CheckTop
 					RemoveStrokes(Indicator)
 					Gradient(Indicator, Skin.CheckTop, Skin.CheckBottom)
@@ -12507,8 +12627,16 @@ end
 
 				local Text = Items["Text"] and Items["Text"].Instance
 				if Text then
+					Text.Position = UDim2.new(0, 14, 0, -6)
+					Text.TextYAlignment = Enum.TextYAlignment.Center
 					Text.FontFace = Library.Font
 					RemoveStrokes(Text)
+				end
+
+				local SubElements = Items["SubElements"] and Items["SubElements"].Instance
+				if SubElements then
+					-- native inline boxes sit at row-6 (keybind) / row-5 (swatch)
+					SubElements.Position = UDim2.new(1, -1, 0, -7)
 				end
 			end
 
@@ -12552,10 +12680,21 @@ end
 					Gradient(Accent, Skin.FillTop, Skin.FillBottom)
 				end
 
+				if Items["Text"] then
+					Items["Text"].Instance.Position = UDim2.new(0, 2, 0, -8)
+					Items["Text"].Instance.TextYAlignment = Enum.TextYAlignment.Center
+				end
+
 				for _, Key in ipairs({ "Text", "Value" }) do
 					if Items[Key] then
 						RemoveStrokes(Items[Key].Instance)
 					end
+				end
+
+				-- native sliders show their value inside the track on hover, not at rest
+				if Items["Value"] then
+					Items["Value"].Instance.TextTransparency = 1
+					Items["Value"].Instance.TextStrokeTransparency = 1
 				end
 			end
 
@@ -12587,6 +12726,19 @@ end
 						Color = Skin.Black,
 						Thickness = 1,
 					})
+				end
+
+				local Label = Items["Text"] and Items["Text"].Instance
+				if Label then
+					Label.Position = UDim2.new(0, 2, 0, -9)
+					Label.TextYAlignment = Enum.TextYAlignment.Center
+					Label.FontFace = Library.Font
+					RemoveStrokes(Label)
+				end
+
+				if Items["Value"] then
+					Items["Value"].Instance.Position = UDim2.new(0, 4, 0.5, 0)
+					Items["Value"].Instance.TextColor3 = Skin.Text
 				end
 
 				local Search = Items["SearchBackground"] and Items["SearchBackground"].Instance
@@ -12621,6 +12773,71 @@ end
 			Self.LastWidget = Dropdown
 
 			return Dropdown
+		end
+
+		-- ----------------------------------------------------------------
+		-- inline keybind: native 32x12 bordered input, no visible brackets
+		-- ----------------------------------------------------------------
+		local BaseSkinCreateKeybind = Library.CreateKeybind
+
+		Library.CreateKeybind = function(Self, Data)
+			local Keybind = BaseSkinCreateKeybind(Self, Data)
+			local Button = Keybind.Items and Keybind.Items["KeyButton"]
+
+			if Button then
+				local Instance = Button.Instance
+
+				Instance.AutomaticSize = Enum.AutomaticSize.None
+				Instance.Size = UDim2.new(0, 32, 0, 12)
+				Instance.BackgroundColor3 = Skin.InputBottom
+				Instance.TextXAlignment = Enum.TextXAlignment.Center
+				Instance.TextYAlignment = Enum.TextYAlignment.Center
+				Instance.TextSize = Library.FontSize
+				Instance.ClipsDescendants = true
+
+				Gradient(Instance, Skin.InputTop, Skin.InputBottom)
+				RemoveStrokes(Instance)
+				Library:Create("UIStroke", {
+					Parent = Instance,
+					Color = Skin.Black,
+					Thickness = 1,
+				})
+			end
+
+			return Keybind
+		end
+
+		-- ----------------------------------------------------------------
+		-- inline color swatch: native 22x10 bordered gradient
+		-- ----------------------------------------------------------------
+		local BaseSkinCreateColorpicker = Library.CreateColorpicker
+
+		Library.CreateColorpicker = function(Self, Data)
+			local Colorpicker = BaseSkinCreateColorpicker(Self, Data)
+			local Button = Colorpicker.Items and Colorpicker.Items["ColorpickerButton"]
+
+			if Button then
+				local Instance = Button.Instance
+
+				Instance.Size = UDim2.new(0, 22, 0, 10)
+				Instance.ClipsDescendants = true
+
+				for _, Child in ipairs(Instance:GetChildren()) do
+					if Child:IsA("UIGradient") then
+						Child:Destroy()
+					end
+				end
+
+				Gradient(Instance, Color3.new(1, 1, 1), Color3.fromRGB(204, 204, 204))
+				RemoveStrokes(Instance)
+				Library:Create("UIStroke", {
+					Parent = Instance,
+					Color = Skin.Black,
+					Thickness = 1,
+				})
+			end
+
+			return Colorpicker
 		end
 
 
