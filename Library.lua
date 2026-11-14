@@ -375,11 +375,9 @@ do
 			-- Alpine pixel fonts
 			--
 			-- Strategy: custom pixel TTFs (option A).
-			-- The three faces are generated from GDI NONANTIALIASED_QUALITY
-			-- Verdana@10, Verdana Bold@10 and Tahoma@11 (see theme.h:
-			-- font_height = 10, bar_font_height = 11). Their TTF em is the GDI
-			-- cell height, so TextSize 12 = Verdana@10 and TextSize 13 =
-			-- Tahoma@11 at exactly one Roblox pixel per GDI pixel.
+			-- ProggyClean is the body/readout and bar face; the compact Tahoma
+			-- bold face is used for headers and active top-bar items. Both are
+			-- sourced from the reference font repository and cached locally.
 			--
 			-- Hosted on GitHub, downloaded once, cached in the executor folder.
 			-- Cache names are versioned; bumping the version forces every client
@@ -387,12 +385,14 @@ do
 			-- No embedded base64 payload, no built-in font fallback ambiguity.
 			-- ================================================================
 
-			Library.FontCacheVersion = 3
+			Library.FontCacheVersion = 5
 			Library.FontStatus = { }
 			Library.FontErrors = { }
 			Library.FontSources = { }
 
-			local FontBase = "https://raw.githubusercontent.com/smartnate/UI/main/upload/"
+			-- These are the fonts used by the reference Vitality-style UI: ProggyClean
+			-- for the body and the compact Tahoma bold face for headers/bars.
+			local FontBase = "https://raw.githubusercontent.com/i77lhm/storage/main/fonts/"
 
 			local function ValidTTF(Body)
 				if type(Body) ~= "string" or #Body < 2048 then
@@ -423,9 +423,12 @@ do
 			end
 
 			local function Describe(Path, Family, Face, Weight)
+				-- Font family descriptor. The reference executor scripts use .font
+				-- for this JSON document; keep that convention so executors that
+				-- resolve the asset by extension see the same file type they use.
 				local Descriptor = Path:gsub("%.ttf$", ".font")
 
-				-- rewrite the descriptor on every load: a stale .font file can
+				-- rewrite the descriptor on every load: a stale descriptor can
 				-- otherwise keep pointing at an old asset id forever
 				if isfile and isfile(Descriptor) and delfile then
 					pcall(delfile, Descriptor)
@@ -509,16 +512,15 @@ do
 				return nil
 			end
 
-			Library.Font = LoadFace("AlpineVerdanaPixel-v3-Regular", "AlpineVerdanaPixelV3", "Regular", 400, "VerdanaPixel-Regular.ttf")
+			Library.Font = LoadFace("AlpineProggyClean-v5-Regular", "AlpineProggyCleanV5", "Regular", 400, "ProggyClean.ttf")
 				or Font.fromEnum(Enum.Font.Arial)
-			Library.BoldFont = LoadFace("AlpineVerdanaPixel-v3-Bold", "AlpineVerdanaPixelV3Bold", "Bold", 700, "VerdanaPixel-Bold.ttf")
+			Library.BoldFont = LoadFace("AlpineTahomaBold-v5-Bold", "AlpineTahomaBoldV5Bold", "Regular", 400, "tahoma_bold.ttf")
 				or Font.fromEnum(Enum.Font.ArialBold)
-			Library.BarFont = LoadFace("AlpineTahomaPixel-v3-Bar", "AlpineTahomaPixelV3", "Regular", 400, "TahomaPixel-Bar.ttf")
+			Library.BarFont = LoadFace("AlpineProggyClean-v5-Bar", "AlpineProggyCleanV5Bar", "Regular", 400, "ProggyClean.ttf")
 				or Font.fromEnum(Enum.Font.Arial)
 
-			-- GDI heights, expressed as the matching Roblox TextSize
 			Library.FontSize = 12
-			Library.BarFontSize = 13
+			Library.BarFontSize = 12
 		Library.Exit = function(Self)
 			for _, Layer in Library.Layers do
 				pcall(function()
@@ -11614,6 +11616,8 @@ end
 			-- this module is appended after Vitality's do-block, so the service
 			-- locals it used are out of scope here
 			local UserInputService = game:GetService("UserInputService")
+			local RunService = game:GetService("RunService")
+			local TweenService = game:GetService("TweenService")
 
 			local Alpine = { }
 			Library.Alpine = Alpine
@@ -11707,15 +11711,23 @@ end
 				FrameLight = RGB(31, 33, 32),
 
 				HeaderBorderTop = RGB(39, 35, 40),
+				HeaderBorderGlow = RGB(55, 47, 53),
 				HeaderAccentTop = RGB(59, 53, 61),
+				HeaderAccentTopGlow = RGB(214, 211, 218),
 				HeaderAccentBottom = RGB(48, 43, 50),
+				HeaderAccentBottomGlow = RGB(205, 201, 208),
 				HeaderFill = RGB(28, 25, 29),
+				HeaderFillGlow = RGB(43, 41, 44),
 				HeaderGradTop = RGB(26, 27, 29),
 				HeaderGradBottom = RGB(16, 18, 17),
 
 				PanelBorderTop = RGB(42, 38, 44),
+				PanelBorderGlow = RGB(53, 50, 57),
 				PanelAccentTop = RGB(59, 53, 61),
+				PanelAccentTopGlow = RGB(214, 211, 218),
 				PanelAccentBottom = RGB(48, 43, 50),
+				PanelAccentBottomGlow = RGB(205, 201, 208),
+				PanelFillGlow = RGB(39, 36, 41),
 				PanelLight = RGB(32, 34, 33),
 				PanelFill = RGB(13, 16, 15),
 				FrameFill = RGB(19, 21, 21),
@@ -11730,7 +11742,9 @@ end
 				HealthLight = RGB(36, 30, 37),
 
 				TabAccentTop = RGB(56, 50, 58),
+				TabAccentTopGlow = RGB(212, 212, 214),
 				TabAccentBottom = RGB(51, 46, 53),
+				TabAccentBottomGlow = RGB(200, 200, 202),
 				TabFillTop = RGB(17, 19, 18),
 				TabFillBottom = RGB(15, 17, 16),
 				TabHoverTop = RGB(25, 28, 27),
@@ -11847,8 +11861,8 @@ end
 			local function Label(Parent, X, CenterY, Width, Text, Color, Align, ZIndex)
 				return Make("TextLabel", {
 					Parent = Parent,
-					Position = UDim2.fromOffset(X, CenterY - 7),
-					Size = UDim2.fromOffset(Width, 14),
+					Position = UDim2.fromOffset(X, CenterY - 8),
+					Size = UDim2.fromOffset(Width, 16),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
 					Text = tostring(Text or ""),
@@ -11865,11 +11879,49 @@ end
 				})
 			end
 
+			-- draw::accent: a base-colour bar with a moving shine peak. The C++
+			-- renderer sweeps a 2*spread highlight across the bar every 4.5s; the
+			-- same motion is one tweened gradient band here. Radius nil uses 12%
+			-- of the bar width, matching draw::accent without an explicit radius.
+			local function Shine(Parent, X, Y, Width, Height, Base, Peak, ZIndex, Radius)
+				local Z = ZIndex or 2
+				local Row = Frame(Parent, X, Y, Width, Height, C.Black, 1, Z)
+				Row.Instance.BackgroundTransparency = 1
+				Row.Instance.ClipsDescendants = true
+
+				Fill(Row, 0, 0, Width, Height, Base, Z + 1)
+
+				local Spread = Radius or math.max(4, math.floor(Width * 0.12))
+				local BandWidth = Spread * 2
+				local Band = Frame(Row, -BandWidth, 0, BandWidth, Height, Peak, 0, Z + 2)
+				local Lower = Base:Lerp(Peak, 0.15625)
+
+				Make("UIGradient", {
+					Parent = Band.Instance,
+					Rotation = 0,
+					Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Base),
+						ColorSequenceKeypoint.new(0.25, Lower),
+						ColorSequenceKeypoint.new(0.5, Peak),
+						ColorSequenceKeypoint.new(0.75, Lower),
+						ColorSequenceKeypoint.new(1, Base),
+					}),
+				})
+
+				local Tween = TweenService:Create(Band.Instance,
+					TweenInfo.new(4.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, false, 0),
+					{ Position = UDim2.fromOffset(Width, 0) })
+				Tween:Play()
+
+				return Row
+			end
+
 			Alpine.Make = Make
 			Alpine.Frame = Frame
 			Alpine.Fill = Fill
 			Alpine.Gradient = Gradient
 			Alpine.Label = Label
+			Alpine.Shine = Shine
 
 			local LogoMask = {
 				"                                          ####",
@@ -11900,10 +11952,10 @@ end
 				Fill(Parent, X, Y, Width, Height, C.Black, 3)
 				Fill(Parent, X + 1, Y + 1, Width - 2, Height - 2, C.FrameLight, 4)
 
-				Fill(Parent, X + 2, Y + 1, Width - 4, 1, C.HeaderBorderTop, 5)
-				Fill(Parent, X + 2, Y + 2, Width - 4, 1, C.HeaderAccentTop, 5)
-				Fill(Parent, X + 2, Y + 3, Width - 4, 1, C.HeaderAccentBottom, 5)
-				Fill(Parent, X + 2, Y + 4, Width - 4, 1, C.HeaderFill, 5)
+				Shine(Parent, X + 2, Y + 1, Width - 4, 1, C.HeaderBorderTop, C.HeaderBorderGlow, 5)
+				Shine(Parent, X + 2, Y + 2, Width - 4, 1, C.HeaderAccentTop, C.HeaderAccentTopGlow, 5)
+				Shine(Parent, X + 2, Y + 3, Width - 4, 1, C.HeaderAccentBottom, C.HeaderAccentBottomGlow, 5)
+				Shine(Parent, X + 2, Y + 4, Width - 4, 1, C.HeaderFill, C.HeaderFillGlow, 5)
 
 				local Body = Fill(Parent, X + 2, Y + 5, Width - 4, Height - 7, C.HeaderGradTop, 4)
 				Gradient(Body, C.HeaderGradTop, C.HeaderGradBottom)
@@ -11963,8 +12015,8 @@ end
 				Fill(Main, 2, 2, M.WindowWidth - 4, M.WindowHeight - 4, C.Black, 0)
 				Fill(Main, 3, 3, M.WindowWidth - 6, M.WindowHeight - 6, C.WindowBand, 0)
 
-				Fill(Main, 6, 5, M.WindowWidth - 12, 1, C.HeaderAccentTop, 1)
-				Fill(Main, 6, 6, M.WindowWidth - 12, 1, C.HeaderAccentBottom, 1)
+				Shine(Main, 6, 5, M.WindowWidth - 12, 1, C.HeaderAccentTop, C.HeaderAccentTopGlow, 1)
+				Shine(Main, 6, 6, M.WindowWidth - 12, 1, C.HeaderAccentBottom, C.HeaderAccentBottomGlow, 1)
 
 				-- backdrop framed rect (7..636, 33..660)
 				Fill(Main, 7, 33, 630, 628, C.Black, 0)
@@ -12065,8 +12117,8 @@ end
 
 				-- tab bar (13,39) 618x24
 				local Pages = Fill(Main, M.TabX, M.TabY, M.TabWidth, M.TabHeight, C.Black, 2)
-				Fill(Pages, 1, 1, M.TabWidth - 2, 1, C.TabAccentTop, 2)
-				Fill(Pages, 1, 2, M.TabWidth - 2, 1, C.TabAccentBottom, 2)
+				Shine(Pages, 1, 1, M.TabWidth - 2, 1, C.TabAccentTop, C.TabAccentTopGlow, 2)
+				Shine(Pages, 1, 2, M.TabWidth - 2, 1, C.TabAccentBottom, C.TabAccentBottomGlow, 2)
 				Items["Pages"] = Pages
 
 				-- page viewport inside the content frame. This is a plain clipping
@@ -12187,56 +12239,52 @@ end
 				Page.Items["Text"] = TabLabel
 				Page.Items["Shade"] = Shade
 
-				local PageFrame = Make("ScrollingFrame", {
+				-- A plain clipped Frame, not a ScrollingFrame. The old page used a
+				-- ScrollingFrame with a CanvasSize that was repeatedly reset to a
+				-- zero width by Roblox's layout pass, which clipped every panel in
+				-- game. This frame owns no canvas at all; the columns are moved
+				-- vertically for scrolling, so there is nothing to clip them away.
+				local PageFrame = Make("Frame", {
 					Parent = Self.Items["Viewport"].Instance,
 					Position = UDim2.fromOffset(0, 0),
 					Size = UDim2.fromOffset(M.ContentWidth - M.PageInset * 2, M.ContentHeight - M.PageInset * 2),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
-					ScrollBarThickness = 0,
-					ScrollBarImageTransparency = 1,
-					ScrollingDirection = Enum.ScrollingDirection.Y,
-					-- start at the frame size so the page is never clipped to a
-					-- zero canvas on its first frame; the column layout lowers it
-					-- to the exact content height once rows exist
-					CanvasSize = UDim2.fromOffset(M.ContentWidth - M.PageInset * 2, M.ContentHeight - M.PageInset * 2),
 					ClipsDescendants = true,
-					Visible = false,
-					ZIndex = 2,
+					Visible = (#Self.Pages == 0),
+					ZIndex = 4,
 				})
 				Page.Items["Page"] = PageFrame
 
-				local Scrollbar = Frame(Self.Items["Viewport"], 0, 0, 2, 20, C.FillTop, 0, 3)
+				Page.Scroll = 0
+				Page.ScrollTarget = 0
+				Page.ContentHeight = M.ContentHeight - M.PageInset * 2
+
+				local Scrollbar = Frame(Self.Items["Viewport"], 0, 0, 2, 20, C.FillTop, 0, 5)
 				Scrollbar.Instance.Visible = false
 				Page.Items["Scrollbar"] = Scrollbar
 
 				function Page:UpdateScrollbar()
 					local View = PageFrame.Instance.AbsoluteSize.Y
-					local Canvas = PageFrame.Instance.CanvasSize.Y.Offset
-					local Range = Canvas - View
+					local Range = (Page.ContentHeight or View) - View
 
-					if Range <= 1 or View <= 0 then
+					if Range <= 1 or View <= 0 or not Page.Active then
 						Scrollbar.Instance.Visible = false
 						return
 					end
 
 					local Track = math.max(12, math.floor(View * View / (View + Range)))
-					local Scroll = math.clamp(PageFrame.Instance.CanvasPosition.Y, 0, Range)
+					local Scroll = math.clamp(Page.Scroll or 0, 0, Range)
 					local Top = 2 + math.floor((View - Track) * (Scroll / Range) + 0.5)
 
 					Scrollbar.Instance.Position = UDim2.fromOffset(PageFrame.Instance.AbsoluteSize.X - 2, Top)
 					Scrollbar.Instance.Size = UDim2.fromOffset(2, Track)
-					Scrollbar.Instance.Visible = Page.Active
+					Scrollbar.Instance.Visible = true
 				end
 
-				PageFrame.Instance:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-					Page:UpdateScrollbar()
-				end)
-
 				local function Column(X)
-					local Holder = Frame(PageFrame, X, 0, M.ColumnWidth, 0, C.Black, 1)
+					local Holder = Frame(PageFrame, X, 0, M.ColumnWidth, M.ContentHeight - M.PageInset * 2, C.Black, 1)
 					Holder.Instance.BackgroundTransparency = 1
-					Holder.Instance.AutomaticSize = Enum.AutomaticSize.Y
 					Make("UIPadding", {
 						Parent = Holder.Instance,
 						PaddingTop = UDim.new(0, M.ColumnTop),
@@ -12263,22 +12311,77 @@ end
 
 				local ColumnHeights = { 0, 0 }
 
+				function Page:ApplyScroll()
+					local View = PageFrame.Instance.AbsoluteSize.Y
+					local Range = math.max(0, (Page.ContentHeight or View) - View)
+
+					Page.ScrollTarget = math.clamp(Page.ScrollTarget or 0, 0, Range)
+					Page.Scroll = math.clamp(Page.Scroll or 0, 0, Range)
+
+					local Offset = -math.floor(Page.Scroll)
+
+					Left.Instance.Position = UDim2.fromOffset(M.ColumnLeft, Offset)
+					Right.Instance.Position = UDim2.fromOffset(M.ColumnRight, Offset)
+					Page:UpdateScrollbar()
+				end
+
+				function Page:RefreshScrollBounds()
+					local PageHeight = M.ContentHeight - M.PageInset * 2
+					Page.ContentHeight = math.max(PageHeight,
+						ColumnHeights[1] + M.ColumnTop + 6,
+						ColumnHeights[2] + M.ColumnTop + 6)
+
+					Page:ApplyScroll()
+					Self:RefreshCanvas()
+				end
+
 				for ColumnIndex, ColumnFrame in ipairs({ Left, Right }) do
 					local Layout = ColumnFrame.Instance:FindFirstChildOfClass("UIListLayout")
 
 					Library:Connect(Layout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
 						ColumnHeights[ColumnIndex] = Layout.AbsoluteContentSize.Y
-
-						-- never let the canvas shrink below the visible page or below
-						-- the taller column: a smaller CanvasSize clips that column
-						local PageHeight = M.ContentHeight - M.PageInset * 2
-						local Height = math.max(PageHeight, ColumnHeights[1], ColumnHeights[2])
-
-						PageFrame.CanvasSize = UDim2.fromOffset(M.ContentWidth - M.PageInset * 2, Height)
-						Page:UpdateScrollbar()
-						Self:RefreshCanvas()
+						Page:RefreshScrollBounds()
 					end)
 				end
+
+				-- custom scrollbar: C++ scroll_step=40 and approach speed=16. The
+				-- columns themselves move; no ScrollingFrame canvas is involved.
+				Library:Connect(UserInputService.InputChanged, function(Input)
+					if not Page.Active or Input.UserInputType ~= Enum.UserInputType.MouseWheel then
+						return
+					end
+
+					local MousePos = UserInputService:GetMouseLocation()
+					local Pos = PageFrame.Instance.AbsolutePosition
+					local Size = PageFrame.Instance.AbsoluteSize
+
+					if MousePos.X < Pos.X or MousePos.Y < Pos.Y or MousePos.X > Pos.X + Size.X or MousePos.Y > Pos.Y + Size.Y then
+						return
+					end
+
+					local Range = math.max(0, (Page.ContentHeight or Size.Y) - Size.Y)
+					Page.ScrollTarget = math.clamp((Page.ScrollTarget or 0) - (Input.Position.Z or 0) * 40, 0, Range)
+				end)
+
+				Library:Connect(RunService.Heartbeat, function(Delta)
+					if not Page.Active then
+						return
+					end
+
+					local View = PageFrame.Instance.AbsoluteSize.Y
+					local Range = math.max(0, (Page.ContentHeight or View) - View)
+					Page.ScrollTarget = math.clamp(Page.ScrollTarget or 0, 0, Range)
+
+					local Difference = (Page.ScrollTarget or 0) - (Page.Scroll or 0)
+
+					if math.abs(Difference) > 0.05 then
+						Page.Scroll = (Page.Scroll or 0) + Difference * math.min(1, Delta * 16)
+						Page:ApplyScroll()
+					elseif Page.Scroll ~= Page.ScrollTarget then
+						Page.Scroll = Page.ScrollTarget
+						Page:ApplyScroll()
+					end
+				end)
 
 				function Page:SetSelected(Bool)
 					Page.Active = Bool
@@ -12312,8 +12415,9 @@ end
 					Page:SetSelected(true)
 
 					-- menu.cpp resets g_scroll_target on tab change
-					PageFrame.CanvasPosition = Vector2.new(0, 0)
-					Page:UpdateScrollbar()
+					Page.Scroll = 0
+					Page.ScrollTarget = 0
+					Page:ApplyScroll()
 
 					Self:RefreshCanvas()
 				end
@@ -12371,10 +12475,10 @@ end
 				local Light = Fill(Panel, 1, 1, M.ColumnWidth - 2, 24, C.PanelLight, 1)
 				local Body = Fill(Panel, 2, 5, M.ColumnWidth - 4, 19, C.PanelFill, 1)
 
-				Fill(Panel, 1, 1, M.ColumnWidth - 2, 1, C.PanelBorderTop, 2)
-				Fill(Panel, 1, 2, M.ColumnWidth - 2, 1, C.PanelAccentTop, 2)
-				Fill(Panel, 1, 3, M.ColumnWidth - 2, 1, C.PanelAccentBottom, 2)
-				Fill(Panel, 2, 4, M.ColumnWidth - 4, 1, C.PanelFill, 2)
+				Shine(Panel, 1, 1, M.ColumnWidth - 2, 1, C.PanelBorderTop, C.PanelBorderGlow, 2)
+				Shine(Panel, 1, 2, M.ColumnWidth - 2, 1, C.PanelAccentTop, C.PanelAccentTopGlow, 2)
+				Shine(Panel, 1, 3, M.ColumnWidth - 2, 1, C.PanelAccentBottom, C.PanelAccentBottomGlow, 2)
+				Shine(Panel, 2, 4, M.ColumnWidth - 4, 1, C.PanelFill, C.PanelFillGlow, 2)
 
 				local Header = Frame(Panel, 0, 0, M.ColumnWidth, M.PanelHeader, C.Black, 3)
 				Header.Instance.BackgroundTransparency = 1
@@ -13587,10 +13691,10 @@ end
 
 					Fill(Popup, 1, 1, Width - 2, Height - 2, C.PanelLight, 501)
 					Fill(Popup, 2, 5, Width - 4, Height - 7, C.PanelFill, 501)
-					Fill(Popup, 1, 1, Width - 2, 1, C.PanelBorderTop, 502)
-					Fill(Popup, 1, 2, Width - 2, 1, C.PanelAccentTop, 502)
-					Fill(Popup, 1, 3, Width - 2, 1, C.PanelAccentBottom, 502)
-					Fill(Popup, 2, 4, Width - 4, 1, C.PanelFill, 502)
+					Library.Alpine.Shine(Popup, 1, 1, Width - 2, 1, C.PanelBorderTop, C.PanelBorderGlow, 502)
+					Library.Alpine.Shine(Popup, 1, 2, Width - 2, 1, C.PanelAccentTop, C.PanelAccentTopGlow, 502)
+					Library.Alpine.Shine(Popup, 1, 3, Width - 2, 1, C.PanelAccentBottom, C.PanelAccentBottomGlow, 502)
+					Library.Alpine.Shine(Popup, 2, 4, Width - 4, 1, C.PanelFill, C.PanelFillGlow, 502)
 
 					-- picker.cpp make_layout: outer boxes are black frames, the colour
 					-- fields are inset by 2 on every side
@@ -13978,10 +14082,10 @@ end
 				local Outer = Fill(Panel, 0, 0, Width, 26, C.Black, 20)
 				local Light = Fill(Panel, 1, 1, Width - 2, 24, C.PanelLight, 20)
 				local Body = Fill(Panel, 2, 5, Width - 4, 19, C.PanelFill, 20)
-				Fill(Panel, 1, 1, Width - 2, 1, C.PanelBorderTop, 21)
-				Fill(Panel, 1, 2, Width - 2, 1, C.PanelAccentTop, 21)
-				Fill(Panel, 1, 3, Width - 2, 1, C.PanelAccentBottom, 21)
-				Fill(Panel, 2, 4, Width - 4, 1, C.PanelFill, 21)
+				Library.Alpine.Shine(Panel, 1, 1, Width - 2, 1, C.PanelBorderTop, C.PanelBorderGlow, 21)
+				Library.Alpine.Shine(Panel, 1, 2, Width - 2, 1, C.PanelAccentTop, C.PanelAccentTopGlow, 21)
+				Library.Alpine.Shine(Panel, 1, 3, Width - 2, 1, C.PanelAccentBottom, C.PanelAccentBottomGlow, 21)
+				Library.Alpine.Shine(Panel, 2, 4, Width - 4, 1, C.PanelFill, C.PanelFillGlow, 21)
 
 				local Title = Label(Panel, M.PanelContentX, 9, Width - 12, Settings.Name, C.Text, Enum.TextXAlignment.Left, 22)
 
@@ -14307,10 +14411,10 @@ end
 				local ToastFrame = Frame(Library.Holder.Instance, -6, 0, Width, Height, C.Black, 1, 399)
 				Fill(ToastFrame, 1, 1, Width - 2, Height - 2, C.PanelLight, 400)
 				Fill(ToastFrame, 2, 5, Width - 4, Height - 7, C.PanelFill, 400)
-				Fill(ToastFrame, 1, 1, Width - 2, 1, C.PanelBorderTop, 401)
-				Fill(ToastFrame, 1, 2, Width - 2, 1, C.PanelAccentTop, 401)
-				Fill(ToastFrame, 1, 3, Width - 2, 1, C.PanelAccentBottom, 401)
-				Fill(ToastFrame, 2, 4, Width - 4, 1, C.PanelFill, 401)
+				Library.Alpine.Shine(ToastFrame, 1, 1, Width - 2, 1, C.PanelBorderTop, C.PanelBorderGlow, 401)
+				Library.Alpine.Shine(ToastFrame, 1, 2, Width - 2, 1, C.PanelAccentTop, C.PanelAccentTopGlow, 401)
+				Library.Alpine.Shine(ToastFrame, 1, 3, Width - 2, 1, C.PanelAccentBottom, C.PanelAccentBottomGlow, 401)
+				Library.Alpine.Shine(ToastFrame, 2, 4, Width - 4, 1, C.PanelFill, C.PanelFillGlow, 401)
 
 				local TimerWidth = math.ceil(MeasureText(TimerText))
 				local TitleLabel = Label(ToastFrame, 6, 11, math.max(20, Width - TimerWidth - 20), Title, C.Text, Enum.TextXAlignment.Left, 402)
@@ -14443,8 +14547,8 @@ end
 			local function TextAt(Parent, X, CenterY, Width, Value, Color, Font, Size, Align, ZIndex)
 				return Make("TextLabel", {
 					Parent = Parent,
-					Position = UDim2.fromOffset(X, CenterY - 7),
-					Size = UDim2.fromOffset(Width, 14),
+					Position = UDim2.fromOffset(X, CenterY - 8),
+					Size = UDim2.fromOffset(Width, 16),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
 					Text = tostring(Value or ""),
@@ -14480,8 +14584,8 @@ end
 				Fill(Panel, 2, 2, Width - 4, Height - 4, C.Black, 2)
 				Fill(Panel, 3, 3, Width - 6, Height - 6, C.OverlayBand, 2)
 
-				Fill(Panel, 6, 5, Width - 12, 1, C.HeaderAccentTop, 3)
-				Fill(Panel, 6, 6, Width - 12, 1, C.HeaderAccentBottom, 3)
+				Alpine.Shine(Panel, 6, 5, Width - 12, 1, C.HeaderAccentTop, C.HeaderAccentTopGlow, 3)
+				Alpine.Shine(Panel, 6, 6, Width - 12, 1, C.HeaderAccentBottom, C.HeaderAccentBottomGlow, 3)
 			end
 
 			-- draw::frame
@@ -14496,10 +14600,11 @@ end
 				local Z = ZIndex or 8
 
 				Fill(Parent, X, Y, Width, Height, C.Black, Z)
-				Fill(Parent, X + 1, Y + 1, Width - 2, 1, C.PanelBorderTop, Z)
-				Fill(Parent, X + 1, Y + 2, Width - 2, 1, C.PanelAccentTop, Z)
-				Fill(Parent, X + 1, Y + 3, Width - 2, 1, C.PanelAccentBottom, Z)
-				Fill(Parent, X + 1, Y + 4, Width - 2, Height - 5, C.PanelFill, Z)
+				Alpine.Shine(Parent, X + 1, Y + 1, Width - 2, 1, C.PanelBorderTop, C.PanelBorderGlow, Z)
+				Alpine.Shine(Parent, X + 1, Y + 2, Width - 2, 1, C.PanelAccentTop, C.PanelAccentTopGlow, Z)
+				Alpine.Shine(Parent, X + 1, Y + 3, Width - 2, 1, C.PanelAccentBottom, C.PanelAccentBottomGlow, Z)
+				Alpine.Shine(Parent, X + 1, Y + 4, Width - 2, 1, C.PanelFill, C.PanelFillGlow, Z)
+				Fill(Parent, X + 1, Y + 5, Width - 2, Height - 6, C.PanelFill, Z)
 				Fill(Parent, X + 1, Y + 4, 1, Height - 5, C.PanelLight, Z)
 				Fill(Parent, X + Width - 2, Y + 4, 1, Height - 5, C.PanelLight, Z)
 				Fill(Parent, X + 1, Y + Height - 2, Width - 2, 1, C.PanelLight, Z)
@@ -15324,8 +15429,14 @@ end
 					})
 				end
 
-				BarFill(0, 1, C.HeaderAccentTop, 51)
-				BarFill(1, 1, C.HeaderAccentBottom, 51)
+				local BarWidth = Screen.X
+
+				if not BarWidth or BarWidth <= 0 then
+					BarWidth = 1920
+				end
+
+				Alpine.Shine(Bar, 0, 0, BarWidth, 1, C.HeaderAccentTop, C.HeaderAccentTopGlow, 51, 64)
+				Alpine.Shine(Bar, 0, 1, BarWidth, 1, C.HeaderAccentBottom, C.HeaderAccentBottomGlow, 51, 64)
 				local Body = BarFill(2, 23, C.TopBarTop, 51)
 				Gradient(Body, C.TopBarTop, C.TopBarBottom)
 				BarFill(25, 1, C.Black, 52)
@@ -15354,7 +15465,7 @@ end
 					Parent = Content.Instance,
 					LayoutOrder = 1,
 					AutomaticSize = Enum.AutomaticSize.X,
-					Size = UDim2.fromOffset(0, 14),
+					Size = UDim2.fromOffset(0, 16),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
 					Text = Brand,
@@ -15374,7 +15485,7 @@ end
 					Parent = Content.Instance,
 					LayoutOrder = 2,
 					AutomaticSize = Enum.AutomaticSize.X,
-					Size = UDim2.fromOffset(0, 14),
+					Size = UDim2.fromOffset(0, 16),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
 					Text = "|",
@@ -15411,7 +15522,7 @@ end
 						Parent = Content.Instance,
 						LayoutOrder = Order,
 						AutomaticSize = Enum.AutomaticSize.X,
-						Size = UDim2.fromOffset(0, 14),
+						Size = UDim2.fromOffset(0, 16),
 						BackgroundTransparency = 1,
 						BorderSizePixel = 0,
 						Text = "/",
@@ -15483,7 +15594,7 @@ end
 					Parent = Bar,
 					AnchorPoint = Vector2.new(1, 0),
 					Position = UDim2.new(1, -10, 0, 6),
-					Size = UDim2.fromOffset(180, 14),
+					Size = UDim2.fromOffset(180, 16),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
 					Text = "",
