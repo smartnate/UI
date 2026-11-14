@@ -375,9 +375,9 @@ do
 			-- Alpine pixel fonts
 			--
 			-- Strategy: custom pixel TTFs (option A).
-			-- ProggyClean is the body/readout and bar face; the compact Tahoma
-			-- bold face is used for headers and active top-bar items. Both are
-			-- sourced from the reference font repository and cached locally.
+			-- VerdanaPixel is the body/readout and bold header face; TahomaPixel
+			-- is the bar face. These match the GDI bitmap faces used by the C++
+			-- reference and the advance table in the widget layer.
 			--
 			-- Hosted on GitHub, downloaded once, cached in the executor folder.
 			-- Cache names are versioned; bumping the version forces every client
@@ -385,14 +385,15 @@ do
 			-- No embedded base64 payload, no built-in font fallback ambiguity.
 			-- ================================================================
 
-			Library.FontCacheVersion = 5
+			Library.FontCacheVersion = 7
 			Library.FontStatus = { }
 			Library.FontErrors = { }
 			Library.FontSources = { }
 
-			-- These are the fonts used by the reference Vitality-style UI: ProggyClean
-			-- for the body and the compact Tahoma bold face for headers/bars.
+			-- These are the exact pixel faces the Alpine metrics were measured
+			-- against: VerdanaPixel for rows and headers, TahomaPixel for the bar.
 			local FontBase = "https://raw.githubusercontent.com/i77lhm/storage/main/fonts/"
+			local FontTag = "?v=7"
 
 			local function ValidTTF(Body)
 				if type(Body) ~= "string" or #Body < 2048 then
@@ -449,14 +450,21 @@ do
 				return Descriptor
 			end
 
-			local function LoadFace(Key, Family, Face, Weight, File)
+			local function LoadFace(Key, Family, Face, Weight, Files)
 				local Ok, Result = pcall(function()
 					local Directory = AssetDir()
 					local Path = Directory .. "/" .. Key .. ".ttf"
+					local FallbackMarker = Path .. ".fallback"
 
 					local Cached = false
 
-					if isfile and isfile(Path) then
+					-- a cached fallback must not shadow the pixel font after it is
+					-- uploaded; retry the primary URL on the next run instead.
+					if isfile and isfile(FallbackMarker) then
+						Cached = false
+					end
+
+					if not Cached and isfile and isfile(Path) then
 						if readfile then
 							local ReadOk, Body = pcall(readfile, Path)
 							Cached = ReadOk and ValidTTF(Body) or false
@@ -470,16 +478,35 @@ do
 							pcall(delfile, Path)
 						end
 
-						local HttpOk, Body = pcall(function()
-							return game:HttpGet(FontBase .. File)
-						end)
+						local Body
+						local Source
 
-						if not HttpOk or not ValidTTF(Body) then
-							error("download failed: " .. FontBase .. File)
+						for Index, File in ipairs(Files) do
+							local HttpOk, Download = pcall(function()
+								return game:HttpGet(FontBase .. File .. FontTag)
+							end)
+
+							if HttpOk and ValidTTF(Download) then
+								Body = Download
+								Source = Index == 1 and "github" or "fallback"
+								break
+							end
+						end
+
+						if not Body then
+							error("download failed: " .. FontBase .. tostring(Files[1]) .. FontTag)
 						end
 
 						writefile(Path, Body)
-						Library.FontSources[Key] = "github"
+						Library.FontSources[Key] = Source
+
+						if Source == "fallback" then
+							if writefile then
+								pcall(writefile, FallbackMarker, "1")
+							end
+						elseif Source == "github" and delfile and isfile and isfile(FallbackMarker) then
+							pcall(delfile, FallbackMarker)
+						end
 					else
 						Library.FontSources[Key] = "cache"
 					end
@@ -512,12 +539,18 @@ do
 				return nil
 			end
 
-			Library.Font = LoadFace("AlpineProggyClean-v5-Regular", "AlpineProggyCleanV5", "Regular", 400, "ProggyClean.ttf")
-				or Font.fromEnum(Enum.Font.Arial)
-			Library.BoldFont = LoadFace("AlpineTahomaBold-v5-Bold", "AlpineTahomaBoldV5Bold", "Regular", 400, "tahoma_bold.ttf")
-				or Font.fromEnum(Enum.Font.ArialBold)
-			Library.BarFont = LoadFace("AlpineProggyClean-v5-Bar", "AlpineProggyCleanV5Bar", "Regular", 400, "ProggyClean.ttf")
-				or Font.fromEnum(Enum.Font.Arial)
+			Library.Font = LoadFace("AlpineVerdanaPixel-v7-Regular", "AlpineVerdanaPixelV7", "Regular", 400, {
+				"VerdanaPixel-Regular.ttf",
+				"Verdana-Font.ttf",
+			}) or Font.fromEnum(Enum.Font.Arial)
+			Library.BoldFont = LoadFace("AlpineVerdanaPixel-v7-Bold", "AlpineVerdanaPixelV7Bold", "Bold", 700, {
+				"VerdanaPixel-Bold.ttf",
+				"Tahoma-Modern-Bold.ttf",
+			}) or Font.fromEnum(Enum.Font.ArialBold)
+			Library.BarFont = LoadFace("AlpineTahomaPixel-v7-Bar", "AlpineTahomaPixelV7Bar", "Regular", 400, {
+				"TahomaPixel-Bar.ttf",
+				"Tahoma-Modern.ttf",
+			}) or Font.fromEnum(Enum.Font.Arial)
 
 			Library.FontSize = 12
 			Library.BarFontSize = 12
@@ -11619,6 +11652,11 @@ end
 			local RunService = game:GetService("RunService")
 			local TweenService = game:GetService("TweenService")
 
+			-- menu.cpp listens for VK_INSERT; Vitality's default is X. The menu
+			-- notification and the C++ reference both advertise Insert, so make
+			-- the actual bind agree with them.
+			Library.MenuKeybind = tostring(Enum.KeyCode.Insert)
+
 			local Alpine = { }
 			Library.Alpine = Alpine
 
@@ -11859,9 +11897,12 @@ end
 			end
 
 			local function Label(Parent, X, CenterY, Width, Text, Color, Align, ZIndex)
+				-- CenterY is a C++ text baseline, not the centre of the label box.
+				-- VerdanaPixel at 12px has an 8px cap, so its visual centre sits
+				-- about three pixels above the baseline.
 				return Make("TextLabel", {
 					Parent = Parent,
-					Position = UDim2.fromOffset(X, CenterY - 8),
+					Position = UDim2.fromOffset(X, CenterY - 11),
 					Size = UDim2.fromOffset(Width, 16),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
@@ -11874,6 +11915,7 @@ end
 					TextScaled = false,
 					TextWrapped = false,
 					TextStrokeTransparency = 1,
+					TextTruncate = Enum.TextTruncate.AtEnd,
 					RichText = false,
 					ZIndex = ZIndex or 2,
 				})
@@ -11983,8 +12025,21 @@ end
 
 				local Main = Frame(Library.Holder.Instance, 0, 0, M.WindowWidth, M.WindowHeight, C.Black)
 				Main.Instance.Name = "\0"
-				Main.Instance.AnchorPoint = Vector2.new(0.5, 0.5)
-				Main.Instance.Position = UDim2.new(0.5, 0, 0.5, 0)
+				-- A top-left anchored window makes the first drag exact. With the
+				-- old half-anchor the first drag read Position.Offset (zero) instead
+				-- of the real centre and teleported the window away.
+				Main.Instance.AnchorPoint = Vector2.new(0, 0)
+
+				local StartScreen = Library.Holder.Instance.AbsoluteSize
+
+				if not StartScreen or StartScreen.X <= 0 or StartScreen.Y <= 0 then
+					StartScreen = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
+						or Vector2.new(1920, 1080)
+				end
+				Main.Instance.Position = UDim2.fromOffset(
+					math.floor((StartScreen.X - M.WindowWidth) * 0.5),
+					math.floor((StartScreen.Y - M.WindowHeight) * 0.5)
+				)
 				-- draw::edge_glow: five 1px rings just outside the window, edge_glow
 				-- colour at 2.17x accent, alphas {70,40,22,11,5} * menu_glow 0.5
 				local GlowColor = RGB(128, 115, 132)
@@ -12051,7 +12106,7 @@ end
 					if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
 						Dragging = true
 						DragStart = Input.Position
-						StartPosition = Main.Instance.Position
+						StartPosition = Main.Instance.AbsolutePosition
 					end
 				end)
 
@@ -12066,12 +12121,10 @@ end
 
 					local Delta = Input.Position - DragStart
 					local Screen = Main.Instance.Parent.AbsoluteSize
-					local HalfX = M.WindowWidth / 2
-					local HalfY = M.WindowHeight / 2
 
 					Main.Instance.Position = UDim2.fromOffset(
-						math.clamp(StartPosition.X.Offset + Delta.X, HalfX, math.max(HalfX, Screen.X - HalfX)),
-						math.clamp(StartPosition.Y.Offset + Delta.Y, HalfY, math.max(HalfY, Screen.Y - HalfY))
+						math.clamp(StartPosition.X + Delta.X, 0, math.max(0, Screen.X - M.WindowWidth)),
+						math.clamp(StartPosition.Y + Delta.Y, 0, math.max(0, Screen.Y - M.WindowHeight))
 					)
 				end)
 
@@ -12145,6 +12198,10 @@ end
 					Window.IsOpen = Bool
 					Main.Instance.Visible = Bool
 
+					if Alpine.OnWindowToggle then
+						Alpine.OnWindowToggle(Bool)
+					end
+
 					if not Bool then
 						-- popups live on the Holder ScreenGui, not inside Main, so
 						-- hiding the window must dismiss them explicitly.
@@ -12163,8 +12220,13 @@ end
 				end
 
 				function Window:Center()
-					Main.Instance.AnchorPoint = Vector2.new(0.5, 0.5)
-					Main.Instance.Position = UDim2.new(0.5, 0, 0.5, 0)
+					local Screen = Main.Instance.Parent.AbsoluteSize
+
+					Main.Instance.AnchorPoint = Vector2.new(0, 0)
+					Main.Instance.Position = UDim2.fromOffset(
+						math.floor((Screen.X - M.WindowWidth) * 0.5),
+						math.floor((Screen.Y - M.WindowHeight) * 0.5)
+					)
 				end
 
 				function Window:InitSettings()
@@ -12420,6 +12482,10 @@ end
 					Page:ApplyScroll()
 
 					Self:RefreshCanvas()
+
+					if Alpine.OnPageTurn then
+						Alpine.OnPageTurn(Page)
+					end
 				end
 
 				Tab:Connect("MouseButton1Down", function()
@@ -12554,6 +12620,31 @@ end
 			local Flags = Library.Flags
 			local SetFlags = Library.SetFlags
 
+			-- Overlay consumers (keybind list, ESP preview) used to poll the flags
+			-- four times a second. Fire once from the widget setters instead so
+			-- the panels react in the same frame as the click.
+			Library.FlagListeners = Library.FlagListeners or { }
+
+			function Library:OnFlagChanged(Callback)
+				table.insert(Library.FlagListeners, Callback)
+
+				return {
+					Disconnect = function()
+						local Index = table.find(Library.FlagListeners, Callback)
+
+						if Index then
+							table.remove(Library.FlagListeners, Index)
+						end
+					end,
+				}
+			end
+
+			local function NotifyFlagChanged(Flag, Value)
+				for _, Callback in ipairs(Library.FlagListeners) do
+					task.defer(Callback, Flag, Value)
+				end
+			end
+
 			local function Shade(Color, Amount)
 				local Target = Amount >= 0 and 1 or 0
 				local Factor = math.abs(Amount)
@@ -12611,23 +12702,29 @@ end
 				local Width = Self.ContentWidth or M.PanelContentWidth
 				local Row = Self:_Row(M.ToggleAdvance)
 
+				-- widgets.cpp hitbox is row-6 .. row+7. The visible checkbox sits at
+				-- row-5, so the old button (starting at row) only covered the lower
+				-- half of the box and clicks looked completely dead. Move the button
+				-- up by six pixels and keep its children at the same absolute rows.
 				local Button = Make("TextButton", {
 					Name = "\0",
 					Parent = Row.Instance,
+					Position = UDim2.fromOffset(0, -6),
 					Size = UDim2.fromOffset(Width, M.ToggleAdvance),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
 					Text = "",
+					Active = true,
 					AutoButtonColor = false,
 					ZIndex = 5,
 				})
 
 				-- widgets.cpp checkbox: 1px black border, 8x8 gradient inside
-				local Checkbox = Frame(Button, 0, M.CheckboxOffset, M.CheckboxSize, M.CheckboxSize, C.Black, 0, 5)
+				local Checkbox = Frame(Button, 0, 1, M.CheckboxSize, M.CheckboxSize, C.Black, 0, 5)
 				local FillBox = Frame(Checkbox, 1, 1, M.CheckboxSize - 2, M.CheckboxSize - 2, C.CheckboxTop, 0, 5)
 				local FillGradient = Gradient(FillBox, C.CheckboxTop, C.CheckboxBottom)
 
-				local Name = Label(Button, M.CheckboxLabel, 0, Width - M.CheckboxLabel,
+				local Name = Label(Button, M.CheckboxLabel, 6, Width - M.CheckboxLabel,
 					Toggle.Name, C.TextDim, Enum.TextXAlignment.Left, 6)
 
 				Toggle.Items["Toggle"] = Button
@@ -12652,6 +12749,7 @@ end
 
 					Flags[Toggle.Flag] = Toggle.Value
 					Paint()
+					NotifyFlagChanged(Toggle.Flag, Toggle.Value)
 
 					task.defer(function()
 						Library:SafeCall(Toggle.Callback, Toggle.Value)
@@ -12811,6 +12909,8 @@ end
 							Mode = Keybind.Mode,
 							Key = Keybind.Value,
 						}
+
+						NotifyFlagChanged(Keybind.Flag, Flags[Keybind.Flag])
 					end
 
 					if Keybind.Gate and Keybind.Mode == "Always" then
@@ -12834,6 +12934,8 @@ end
 							Mode = Keybind.Mode,
 							Key = Keybind.Value,
 						}
+
+						NotifyFlagChanged(Keybind.Flag, Flags[Keybind.Flag])
 					end
 
 					if Keybind.Gate then
@@ -13026,6 +13128,7 @@ end
 					Slider.Value = Number + 0.0
 					Flags[Slider.Flag] = Slider.Value
 					Paint()
+					NotifyFlagChanged(Slider.Flag, Slider.Value)
 
 					if not Silent then
 						task.defer(function()
@@ -13226,6 +13329,7 @@ end
 
 					Flags[Dropdown.Flag] = Dropdown.Value
 					PaintField()
+					NotifyFlagChanged(Dropdown.Flag, Dropdown.Value)
 
 					task.defer(function()
 						Library:SafeCall(Dropdown.Callback, Dropdown.Value)
@@ -13627,6 +13731,7 @@ end
 					Picker.Value = Color3.fromHSV(Picker.Hue, Picker.Saturation, Picker.Brightness)
 					PaintSwatch()
 					FlagsUpdate()
+					NotifyFlagChanged(Picker.Flag, Picker.Value)
 
 					if PopupParts then
 						PopupParts:Refresh()
@@ -13649,6 +13754,7 @@ end
 
 					PaintSwatch()
 					FlagsUpdate()
+					NotifyFlagChanged(Picker.Flag, Picker.Value)
 
 					if PopupParts then
 						PopupParts:Refresh()
@@ -13802,6 +13908,22 @@ end
 					Gradient(PasteInner, C.InputTop, C.InputBottom)
 
 					local Dragging
+					local DragConnection
+					local DragEnd
+
+					local function StopDrag()
+						Dragging = nil
+
+						if DragConnection then
+							DragConnection:Disconnect()
+							DragConnection = nil
+						end
+
+						if DragEnd then
+							DragEnd:Disconnect()
+							DragEnd = nil
+						end
+					end
 
 					local function Apply()
 						Picker.Value = Color3.fromHSV(Picker.Hue, Picker.Saturation, Picker.Brightness)
@@ -13837,6 +13959,7 @@ end
 							BackgroundTransparency = 1,
 							BorderSizePixel = 0,
 							Text = "",
+							Active = true,
 							AutoButtonColor = false,
 							ZIndex = 508,
 						})
@@ -13848,6 +13971,24 @@ end
 
 							Dragging = Function
 							Function()
+
+							-- The old picker only applied the point under the initial
+							-- click; dragging the saturation/hue/alpha bars did nothing.
+							if not DragConnection then
+								DragConnection = UserInputService.InputChanged:Connect(function(Move)
+									if Dragging and (Move.UserInputType == Enum.UserInputType.MouseMovement or Move.UserInputType == Enum.UserInputType.Touch) then
+										Dragging()
+									end
+								end)
+							end
+
+							if not DragEnd then
+								DragEnd = UserInputService.InputEnded:Connect(function(Ended)
+									if Ended.UserInputType == Enum.UserInputType.MouseButton1 or Ended.UserInputType == Enum.UserInputType.Touch then
+										StopDrag()
+									end
+								end)
+							end
 						end)
 					end
 
@@ -14547,7 +14688,9 @@ end
 			local function TextAt(Parent, X, CenterY, Width, Value, Color, Font, Size, Align, ZIndex)
 				return Make("TextLabel", {
 					Parent = Parent,
-					Position = UDim2.fromOffset(X, CenterY - 8),
+					-- CenterY is the C++ baseline; the pixel face centres three
+					-- pixels above it inside a 16px box.
+					Position = UDim2.fromOffset(X, CenterY - 11),
 					Size = UDim2.fromOffset(Width, 16),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
@@ -14560,6 +14703,7 @@ end
 					TextScaled = false,
 					TextWrapped = false,
 					TextStrokeTransparency = 1,
+					TextTruncate = Enum.TextTruncate.AtEnd,
 					RichText = false,
 					ZIndex = ZIndex or 10,
 				})
@@ -15042,9 +15186,71 @@ end
 				end
 
 				FrameBox(Body, InnerX, ListY, InnerW, ListH, 8, C.PanelFill)
-				TextAt(Body, InnerX, ListY + ListH / 2, InnerW, "too lazy to do ts", C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Center, 11)
+
+				local ThreadRows = {
+					{ "Render", "60", "16.67", "42.1" },
+					{ "Heartbeat", "60", "16.67", "31.4" },
+					{ "Script", "20", "3.00", "12.8" },
+					{ "Physics", "60", "1.40", "6.2" },
+				}
+
+				for Index, Row in ipairs(ThreadRows) do
+					local Y = ListY + 10 + (Index - 1) * 15
+
+					TextAt(Body, InnerX + 6, Y, 140, Row[1], C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 11)
+					TextAt(Body, InnerX + 5 + math.floor(Span * 0.42), Y, 44, Row[2], C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 11)
+					TextAt(Body, InnerX + 5 + math.floor(Span * 0.54), Y, 44, Row[3], C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 11)
+					TextAt(Body, InnerX + 5 + math.floor(Span * 0.68), Y, 44, Row[4], C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 11)
+				end
+
 				PanelBox(Body, InnerX, InfoY, InnerW, InfoH, 8)
-				TextAt(Body, InnerX, InfoY + InfoH / 2, InnerW, "Click a thread to see its graphs", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Center, 12)
+				TextAt(Body, InnerX + 8, InfoY + 14, InnerW - 16, "Frame time graph", C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 12)
+				TextAt(Body, InnerX + 8, InfoY + 14, InnerW - 16, "0 - 33 ms", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Right, 12)
+
+				local GraphX = InnerX + 8
+				local GraphY = InfoY + 22
+				local GraphW = InnerW - 16
+				local GraphH = InfoH - 30
+				local BarCount = 48
+				local BarWidth = math.max(1, math.floor((GraphW - 2) / BarCount))
+				local Heights = table.create(BarCount, 0)
+				local Bars = { }
+
+				Fill(Body, GraphX, GraphY, GraphW, GraphH, C.Content, 9)
+
+				for Index = 1, 3 do
+					local Y = GraphY + math.floor(GraphH * (Index - 1) / 3)
+					Fill(Body, GraphX, Y, GraphW, 1, C.FrameLight, 10)
+				end
+
+				for Index = 1, BarCount do
+					local Bar = Fill(Body, GraphX + (Index - 1) * BarWidth, GraphY + GraphH - 1, BarWidth, 1, C.FillTop, 11)
+					table.insert(Bars, Bar)
+				end
+
+				local LastGraph = 0
+
+				Library:Connect(RunService.Heartbeat, function()
+					local Now = os.clock()
+
+					if Now - LastGraph < 0.1 or not Body.Instance.Parent or not Tool.Panel.Instance.Visible then
+						return
+					end
+
+					LastGraph = Now
+
+					local Fps = math.max(1, Library.Fps:Get() or 60)
+					local Milliseconds = math.clamp(1000 / Fps, 0, 33)
+
+					table.remove(Heights, 1)
+					table.insert(Heights, Milliseconds)
+
+					for Index, Bar in ipairs(Bars) do
+						local Height = math.max(1, math.floor(Heights[Index] / 33 * (GraphH - 2) + 0.5))
+						Bar.Instance.Size = UDim2.fromOffset(BarWidth, Height)
+						Bar.Instance.Position = UDim2.fromOffset(GraphX + (Index - 1) * BarWidth, GraphY + GraphH - Height)
+					end
+				end)
 			end
 
 			local function BuildColorsTool(Overlay, Tool, Body, W, H)
@@ -15175,6 +15381,10 @@ end
 					local VisualsPage = self.Window.Pages[2]
 					local IsVisuals = VisualsPage ~= nil and self.Window.Current == VisualsPage
 					self.PreviewPanel.Instance.Visible = Open and IsVisuals or false
+
+					if self.RefreshPreview then
+						self:RefreshPreview()
+					end
 				end
 			end
 
@@ -15350,8 +15560,8 @@ end
 					for Index, Bind in ipairs(Binds) do
 						local Row = 29 + 9 + (Index - 1) * 14
 
-						TextAt(Panel, 6 + 9, Row, Width - 37, Bind.Name, C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Left, 9)
-						TextAt(Panel, 6, Row, Width - 21, Bind.Mode, C.TextDim, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Right, 9)
+						TextAt(Panel, 6 + 9, Row, Width - 37, Bind.Name, C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 9)
+						TextAt(Panel, 6, Row, Width - 21, Bind.Mode, C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Right, 9)
 					end
 				end
 
@@ -15647,7 +15857,7 @@ end
 				local Height = 668
 				local WindowLeft = math.floor((Screen.X - 644) * 0.5)
 				local WindowTop = math.floor((Screen.Y - Height) * 0.5)
-				local X = WindowLeft + 644 + 10
+				local X = math.clamp(WindowLeft + 644 + 10, 8, math.max(8, Screen.X - Width - 8))
 
 				local Panel = Make("Frame", {
 					Parent = self.Root,
@@ -15664,14 +15874,72 @@ end
 				TextAt(Panel, 6, 17, Width - 12, "Preview", C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Center, 9)
 				FrameBox(Panel, 6, 30, Width - 12, Height - 36, 8)
 
+				-- A real ESP preview instead of the empty box that used to ship.
+				-- The silhouette is the same avatar renderer used by the playerlist;
+				-- the outline, name, health and distance follow the live visual flags.
+				local AvatarX, AvatarY, AvatarW, AvatarH = 84, 108, 162, 330
+				ToolAvatar(Panel, AvatarX, AvatarY, AvatarW, AvatarH, 11)
+
+				local BoxLeft, BoxTop = 70, 88
+				local BoxWidth, BoxHeight = 190, 360
+				local BoxLines = {
+					Fill(Panel, BoxLeft, BoxTop, BoxWidth, 1, C.FillTop, 12),
+					Fill(Panel, BoxLeft, BoxTop + BoxHeight - 1, BoxWidth, 1, C.FillTop, 12),
+					Fill(Panel, BoxLeft, BoxTop, 1, BoxHeight, C.FillTop, 12),
+					Fill(Panel, BoxLeft + BoxWidth - 1, BoxTop, 1, BoxHeight, C.FillTop, 12),
+				}
+
+				local Name = TextAt(Panel, BoxLeft, BoxTop - 9, BoxWidth, "dbxlll", C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 13)
+				local Distance = TextAt(Panel, BoxLeft, BoxTop + BoxHeight + 11, BoxWidth, "42m", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 13)
+
+				local HealthBack = Fill(Panel, BoxLeft - 10, BoxTop, 5, BoxHeight, C.Black, 12)
+				local HealthFill = Fill(Panel, BoxLeft - 10, BoxTop + 1, 3, BoxHeight - 2, C.FillTop, 13)
+
+				local PreviewParts = {
+					Box = BoxLines,
+					Name = Name,
+					Distance = Distance,
+					HealthBack = HealthBack,
+					HealthFill = HealthFill,
+				}
+
+				self.PreviewParts = PreviewParts
 				self.PreviewPanel = Panel
+
+				function Overlay:RefreshPreview()
+					local Parts = self.PreviewParts
+
+					if not Parts then
+						return
+					end
+
+					local Visuals = Library.Flags or { }
+					local BoxOn = Visuals["visuals.box"] ~= false
+					local NameOn = Visuals["visuals.name"] ~= false
+					local HealthOn = Visuals["visuals.health_bar"] ~= false
+					local DistanceOn = Visuals["visuals.distance"] == true
+
+					for _, Line in ipairs(Parts.Box) do
+						Line.Instance.Visible = BoxOn
+					end
+
+					Parts.Name.Instance.Visible = NameOn
+					Parts.Distance.Instance.Visible = DistanceOn
+					Parts.HealthBack.Instance.Visible = HealthOn
+					Parts.HealthFill.Instance.Visible = HealthOn
+				end
+
+				self:RefreshPreview()
 
 				local MainFrame = self.Window.Items and self.Window.Items.MainFrame
 
 				if MainFrame then
 					local function Follow()
 						local Position = MainFrame.Instance.AbsolutePosition
-						Panel.Instance.Position = UDim2.fromOffset(math.floor(Position.X + 644 + 10), math.floor(Position.Y))
+						local FollowX = math.clamp(Position.X + 644 + 10, 8, math.max(8, Screen.X - Width - 8))
+						local FollowY = math.clamp(Position.Y, 0, math.max(0, Screen.Y - Height))
+
+						Panel.Instance.Position = UDim2.fromOffset(math.floor(FollowX), math.floor(FollowY))
 					end
 
 					Follow()
@@ -15794,6 +16062,34 @@ end
 				Overlay:BuildPreview(Screen)
 				Overlay:Apply()
 
+				-- Immediate consumers: keybind list, page visibility and the ESP
+				-- preview no longer wait for the quarter-second polling pass.
+				Library:OnFlagChanged(function(Flag)
+					if not Overlay.Root then
+						return
+					end
+
+					Overlay:BuildKeybinds(Screen, false)
+
+					if type(Flag) == "string" and string.sub(Flag, 1, 8) == "visuals." then
+						if Overlay.RefreshPreview then
+							Overlay:RefreshPreview()
+						end
+					end
+				end)
+
+				Alpine.OnPageTurn = function()
+					Overlay:ApplyTools()
+
+					if Overlay.RefreshPreview then
+						Overlay:RefreshPreview()
+					end
+				end
+
+				Alpine.OnWindowToggle = function()
+					Overlay:ApplyTools()
+				end
+
 				Library:Connect(UserInputService.InputChanged, function(Input)
 					if not Overlay.DragTool or Input.UserInputType ~= Enum.UserInputType.MouseMovement then
 						return
@@ -15844,7 +16140,7 @@ end
 				Library:Connect(RunService.Heartbeat, function()
 					local Now = os.clock()
 
-					if Now - BindLast < 0.25 or not Root.Instance.Parent then
+					if Now - BindLast < 0.5 or not Root.Instance.Parent then
 						return
 					end
 
