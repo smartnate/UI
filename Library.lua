@@ -11697,8 +11697,10 @@ end
 
 			Alpine.Color = {
 				Black = RGB(0, 0, 0),
-				WindowBand = RGB(19, 19, 20),
+				WindowBand = RGB(22, 21, 22),
+				OverlayBand = RGB(19, 19, 20),
 				WindowEdge = RGB(70, 63, 73),
+				EdgeGlow = RGB(128, 115, 132),
 
 				Backdrop = RGB(15, 15, 15),
 				Content = RGB(16, 16, 16),
@@ -11716,6 +11718,16 @@ end
 				PanelAccentBottom = RGB(48, 43, 50),
 				PanelLight = RGB(32, 34, 33),
 				PanelFill = RGB(13, 16, 15),
+				FrameFill = RGB(19, 21, 21),
+				TopBarTop = RGB(21, 22, 23),
+				TopBarBottom = RGB(15, 17, 16),
+				TextActive = RGB(118, 106, 122),
+				TextSeparator = RGB(60, 61, 61),
+				HealthTop = RGB(73, 56, 79),
+				HealthBottom = RGB(52, 44, 55),
+				HealthAccent = RGB(72, 56, 78),
+				HealthShade = RGB(62, 48, 68),
+				HealthLight = RGB(36, 30, 37),
 
 				TabAccentTop = RGB(56, 50, 58),
 				TabAccentBottom = RGB(51, 46, 53),
@@ -11729,6 +11741,7 @@ end
 				TextDim = RGB(134, 136, 135),
 				TextMessage = RGB(199, 201, 201),
 				TextTitle = RGB(205, 207, 207),
+				TextTarget = RGB(104, 116, 142),
 
 				InputTop = RGB(27, 30, 29),
 				InputBottom = RGB(19, 21, 21),
@@ -11760,7 +11773,7 @@ end
 				Text = C.Text,
 				["Outline 1"] = C.FrameLight,
 				["Outline 2"] = C.Content,
-				["Outline 3"] = C.PanelFill,
+				["Outline 3"] = C.FrameFill,
 				["Outline 4"] = C.Black,
 				["Inactive Text"] = C.TextDim,
 				Accent = RGB(118, 106, 122),
@@ -12056,17 +12069,15 @@ end
 				Fill(Pages, 1, 2, M.TabWidth - 2, 1, C.TabAccentBottom, 2)
 				Items["Pages"] = Pages
 
-				-- page viewport inside the content frame
-				local Viewport = Make("ScrollingFrame", {
+				-- page viewport inside the content frame. This is a plain clipping
+				-- frame: each page owns the single ScrollingFrame, so there is no
+				-- outer scroll region whose CanvasSize could clip the page away.
+				local Viewport = Make("Frame", {
 					Parent = Content.Instance,
 					Position = UDim2.fromOffset(M.PageInset, M.PageInset),
 					Size = UDim2.fromOffset(M.ContentWidth - M.PageInset * 2, M.ContentHeight - M.PageInset * 2),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
-					ScrollBarThickness = 0,
-					ScrollBarImageTransparency = 1,
-					ScrollingDirection = Enum.ScrollingDirection.Y,
-					CanvasSize = UDim2.fromOffset(0, 0),
 					ClipsDescendants = true,
 					ZIndex = 2,
 				})
@@ -12074,9 +12085,8 @@ end
 				Window.Viewport = Viewport
 
 				function Window:RefreshCanvas()
-					-- each page owns its own ScrollingFrame; the outer viewport is a
-					-- fixed clip rect (menu.cpp scrolls a single content area)
-					Window.Viewport.CanvasSize = UDim2.fromOffset(0, 0)
+					-- each page owns its own ScrollingFrame and drives its own
+					-- CanvasSize; the viewport is only a fixed clipping frame
 				end
 
 				function Window:SetOpen(Bool)
@@ -12120,6 +12130,10 @@ end
 
 					Window:SetOpen(not Window.IsOpen)
 				end)
+
+				if Alpine.SetupOverlay then
+					Alpine.SetupOverlay(Window)
+				end
 
 				return setmetatable(Window, Library)
 			end
@@ -12182,12 +12196,42 @@ end
 					ScrollBarThickness = 0,
 					ScrollBarImageTransparency = 1,
 					ScrollingDirection = Enum.ScrollingDirection.Y,
-					CanvasSize = UDim2.fromOffset(0, 0),
+					-- start at the frame size so the page is never clipped to a
+					-- zero canvas on its first frame; the column layout lowers it
+					-- to the exact content height once rows exist
+					CanvasSize = UDim2.fromOffset(M.ContentWidth - M.PageInset * 2, M.ContentHeight - M.PageInset * 2),
 					ClipsDescendants = true,
 					Visible = false,
 					ZIndex = 2,
 				})
 				Page.Items["Page"] = PageFrame
+
+				local Scrollbar = Frame(Self.Items["Viewport"], 0, 0, 2, 20, C.FillTop, 0, 3)
+				Scrollbar.Instance.Visible = false
+				Page.Items["Scrollbar"] = Scrollbar
+
+				function Page:UpdateScrollbar()
+					local View = PageFrame.Instance.AbsoluteSize.Y
+					local Canvas = PageFrame.Instance.CanvasSize.Y.Offset
+					local Range = Canvas - View
+
+					if Range <= 1 or View <= 0 then
+						Scrollbar.Instance.Visible = false
+						return
+					end
+
+					local Track = math.max(12, math.floor(View * View / (View + Range)))
+					local Scroll = math.clamp(PageFrame.Instance.CanvasPosition.Y, 0, Range)
+					local Top = 2 + math.floor((View - Track) * (Scroll / Range) + 0.5)
+
+					Scrollbar.Instance.Position = UDim2.fromOffset(PageFrame.Instance.AbsoluteSize.X - 2, Top)
+					Scrollbar.Instance.Size = UDim2.fromOffset(2, Track)
+					Scrollbar.Instance.Visible = Page.Active
+				end
+
+				PageFrame.Instance:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+					Page:UpdateScrollbar()
+				end)
 
 				local function Column(X)
 					local Holder = Frame(PageFrame, X, 0, M.ColumnWidth, 0, C.Black, 1)
@@ -12217,11 +12261,21 @@ end
 				Self.Items["Column1"] = Left
 				Self.Items["Column2"] = Right
 
-				for _, ColumnFrame in { Left, Right } do
+				local ColumnHeights = { 0, 0 }
+
+				for ColumnIndex, ColumnFrame in ipairs({ Left, Right }) do
 					local Layout = ColumnFrame.Instance:FindFirstChildOfClass("UIListLayout")
 
 					Library:Connect(Layout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
-						PageFrame.CanvasSize = UDim2.fromOffset(0, Layout.AbsoluteContentSize.Y)
+						ColumnHeights[ColumnIndex] = Layout.AbsoluteContentSize.Y
+
+						-- never let the canvas shrink below the visible page or below
+						-- the taller column: a smaller CanvasSize clips that column
+						local PageHeight = M.ContentHeight - M.PageInset * 2
+						local Height = math.max(PageHeight, ColumnHeights[1], ColumnHeights[2])
+
+						PageFrame.CanvasSize = UDim2.fromOffset(M.ContentWidth - M.PageInset * 2, Height)
+						Page:UpdateScrollbar()
 						Self:RefreshCanvas()
 					end)
 				end
@@ -12236,6 +12290,8 @@ end
 
 					if Bool then
 						Shade.Instance.Color = ColorSequence.new(C.TabFillTop, C.TabFillBottom)
+					else
+						Page:UpdateScrollbar()
 					end
 				end
 
@@ -12256,8 +12312,8 @@ end
 					Page:SetSelected(true)
 
 					-- menu.cpp resets g_scroll_target on tab change
-					Self.Items["Viewport"].Instance.CanvasPosition = Vector2.new(0, 0)
 					PageFrame.CanvasPosition = Vector2.new(0, 0)
+					Page:UpdateScrollbar()
 
 					Self:RefreshCanvas()
 				end
@@ -14362,6 +14418,1343 @@ end
 					:format(M.WindowWidth, M.WindowHeight, M.ContentWidth, M.ContentHeight, M.ColumnWidth))
 
 				return Library.FontStatus
+			end
+
+
+			-- ----------------------------------------------------------------
+			-- overlay.cpp: top bar, watermark, keybind list, target hud
+			-- ----------------------------------------------------------------
+			Alpine.Overlay = Alpine.Overlay or { }
+
+			local Overlay = Alpine.Overlay
+
+			Overlay.State = Overlay.State or {
+				watermark = true,
+				players = false,
+				waypoints = false,
+				themes = false,
+				keybinds = true,
+				target_hud = true,
+				dex = false,
+				configs = false,
+				perf = false,
+			}
+
+			local function TextAt(Parent, X, CenterY, Width, Value, Color, Font, Size, Align, ZIndex)
+				return Make("TextLabel", {
+					Parent = Parent,
+					Position = UDim2.fromOffset(X, CenterY - 7),
+					Size = UDim2.fromOffset(Width, 14),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Text = tostring(Value or ""),
+					TextColor3 = Color or C.Text,
+					FontFace = Font or Library.Font,
+					TextSize = Size or Library.FontSize,
+					TextXAlignment = Align or Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Center,
+					TextScaled = false,
+					TextWrapped = false,
+					TextStrokeTransparency = 1,
+					RichText = false,
+					ZIndex = ZIndex or 10,
+				})
+			end
+
+			local GlowRings = { 70, 40, 22, 11, 5 }
+
+			-- draw::window + draw::window_glow for the floating overlays
+			local function Chrome(Panel, Width, Height)
+				for Ring = 1, 5 do
+					local Spread = Ring
+					local Transparency = 1 - (GlowRings[Ring] / 255) * 0.5
+
+					Frame(Panel, -Spread, -Spread, Width + Spread * 2, 1, C.EdgeGlow, Transparency, 1)
+					Frame(Panel, -Spread, Height + Spread - 1, Width + Spread * 2, 1, C.EdgeGlow, Transparency, 1)
+					Frame(Panel, -Spread, -Spread + 1, 1, Height + Spread * 2 - 2, C.EdgeGlow, Transparency, 1)
+					Frame(Panel, Width + Spread - 1, -Spread + 1, 1, Height + Spread * 2 - 2, C.EdgeGlow, Transparency, 1)
+				end
+
+				Fill(Panel, 0, 0, Width, Height, C.Black, 2)
+				Fill(Panel, 1, 1, Width - 2, Height - 2, C.WindowEdge, 2)
+				Fill(Panel, 2, 2, Width - 4, Height - 4, C.Black, 2)
+				Fill(Panel, 3, 3, Width - 6, Height - 6, C.OverlayBand, 2)
+
+				Fill(Panel, 6, 5, Width - 12, 1, C.HeaderAccentTop, 3)
+				Fill(Panel, 6, 6, Width - 12, 1, C.HeaderAccentBottom, 3)
+			end
+
+			-- draw::frame
+			local function FrameBox(Panel, X, Y, Width, Height, ZIndex, FillColor)
+				Fill(Panel, X, Y, Width, Height, C.Black, ZIndex)
+				Fill(Panel, X + 1, Y + 1, Width - 2, Height - 2, C.FrameLight, ZIndex)
+				Fill(Panel, X + 2, Y + 2, Width - 4, Height - 4, FillColor or C.FrameFill, ZIndex)
+			end
+
+			-- draw::panel (used by tool hint boxes)
+			local function PanelBox(Parent, X, Y, Width, Height, ZIndex)
+				local Z = ZIndex or 8
+
+				Fill(Parent, X, Y, Width, Height, C.Black, Z)
+				Fill(Parent, X + 1, Y + 1, Width - 2, 1, C.PanelBorderTop, Z)
+				Fill(Parent, X + 1, Y + 2, Width - 2, 1, C.PanelAccentTop, Z)
+				Fill(Parent, X + 1, Y + 3, Width - 2, 1, C.PanelAccentBottom, Z)
+				Fill(Parent, X + 1, Y + 4, Width - 2, Height - 5, C.PanelFill, Z)
+				Fill(Parent, X + 1, Y + 4, 1, Height - 5, C.PanelLight, Z)
+				Fill(Parent, X + Width - 2, Y + 4, 1, Height - 5, C.PanelLight, Z)
+				Fill(Parent, X + 1, Y + Height - 2, Width - 2, 1, C.PanelLight, Z)
+			end
+
+			-- draw::text_field / render_input in tools.cpp
+			local function ToolInput(Parent, X, Y, Width, Height, ZIndex)
+				local Z = ZIndex or 10
+
+				Fill(Parent, X, Y, Width, Height, C.Black, Z)
+				local Inner = Make("Frame", {
+					Parent = Parent,
+					Position = UDim2.fromOffset(X + 1, Y + 1),
+					Size = UDim2.fromOffset(Width - 2, Height - 2),
+					BackgroundColor3 = C.InputTop,
+					BackgroundTransparency = 0,
+					BorderSizePixel = 0,
+					ZIndex = Z,
+				})
+
+				Gradient(Inner, C.InputTop, C.InputBottom)
+				return Inner
+			end
+
+			local function ToolField(Parent, X, Y, Width, Text, Placeholder, Changed, ZIndex)
+				local Height = 18
+
+				ToolInput(Parent, X, Y, Width, Height, ZIndex or 10)
+
+				local Box = Make("TextBox", {
+					Parent = Parent,
+					Position = UDim2.fromOffset(X + 5, Y + 1),
+					Size = UDim2.fromOffset(Width - 10, Height - 2),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Text = Text or "",
+					PlaceholderText = Placeholder or "",
+					PlaceholderColor3 = C.TextDim,
+					TextColor3 = C.Text,
+					FontFace = Library.Font,
+					TextSize = Library.FontSize,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Center,
+					TextScaled = false,
+					ClearTextOnFocus = false,
+					ZIndex = (ZIndex or 10) + 2,
+				})
+
+				if Changed then
+					Box.Instance:GetPropertyChangedSignal("Text"):Connect(function()
+						Changed(Box.Instance.Text)
+					end)
+				end
+
+				return Box
+			end
+
+			local function ToolButton(Parent, X, Y, Width, Height, Text, Clicked, ZIndex)
+				local Z = ZIndex or 14
+				local Button = Make("TextButton", {
+					Parent = Parent,
+					Position = UDim2.fromOffset(X, Y),
+					Size = UDim2.fromOffset(Width, Height),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Text = "",
+					AutoButtonColor = false,
+					ZIndex = Z,
+				})
+
+				Fill(Button, 0, 0, Width, Height, C.Black, 1)
+				local Inner = Fill(Button, 1, 1, Width - 2, Height - 2, C.InputTop, 1)
+				local Shade = Gradient(Inner, C.InputTop, C.InputBottom)
+				local Label = TextAt(Button, 0, Height / 2, Width, Text, C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Center, 2)
+
+				Button:Connect("MouseEnter", function()
+					Shade.Instance.Color = ColorSequence.new(C.InputHoverTop, C.InputHoverBottom)
+					Label.Instance.TextColor3 = C.Text
+				end)
+
+				Button:Connect("MouseLeave", function()
+					Shade.Instance.Color = ColorSequence.new(C.InputTop, C.InputBottom)
+				end)
+
+				Button:Connect("MouseButton1Down", function()
+					if Clicked then
+						Clicked()
+					end
+				end)
+
+				return Button
+			end
+
+			local function ToolSearch(Parent, X, Y, Width, Placeholder, Changed, ZIndex)
+				local FieldWidth = Width - 50
+				local Box = ToolField(Parent, X, Y, FieldWidth, "", Placeholder, Changed, ZIndex)
+
+				ToolButton(Parent, X + Width - 46, Y, 46, 18, "Clear", function()
+					Box.Instance.Text = ""
+				end, ZIndex)
+
+				return Box, Y + 18
+			end
+
+			local function ToolRow(Parent, X, Y, Width, Text, Selected, Clicked, ZIndex)
+				local Z = ZIndex or 12
+				local Row = Make("TextButton", {
+					Parent = Parent,
+					Position = UDim2.fromOffset(X, Y),
+					Size = UDim2.fromOffset(Width, 17),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Text = "",
+					AutoButtonColor = false,
+					ZIndex = Z,
+				})
+
+				local Hover = Fill(Row, 0, 0, Width, 17, C.InputHoverTop, 1)
+				Hover.Instance.BackgroundTransparency = 1
+
+				local Pick = Fill(Row, 0, 0, Width, 17, C.FillTop, 1)
+				Gradient(Pick, C.FillTop, C.FillBottom)
+				Pick.Instance.BackgroundTransparency = Selected and 0 or 1
+
+				TextAt(Row, 5, 8.5, Width - 10, Text, C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 2)
+
+				Row:Connect("MouseEnter", function()
+					if not Selected then
+						Hover.Instance.BackgroundTransparency = 0.65
+					end
+				end)
+
+				Row:Connect("MouseLeave", function()
+					Hover.Instance.BackgroundTransparency = 1
+				end)
+
+				Row:Connect("MouseButton1Down", function()
+					if Clicked then
+						Clicked()
+					end
+				end)
+
+				return Row
+			end
+
+			local function ToolNotify(Message)
+				if Library.Notification then
+					Library:Notification({
+						Title = "hello world",
+						Message = Message,
+						Time = 5,
+					})
+				end
+			end
+
+			local ToolAvatar
+
+			local function BuildPlayersTool(Overlay, Tool, Body, W, H)
+				local InnerX, InnerY = 5, 5
+				local InnerW = W - 10
+				local ListY = InnerY + 18 + 5
+				local InfoY = H - 100
+				local ListH = InfoY - 5 - 1 - ListY
+				local Selected = -1
+				local Query = ""
+				local Names = { "dbxlll", "hi again" }
+
+				FrameBox(Body, InnerX, ListY, InnerW, ListH, 8, C.PanelFill)
+				FrameBox(Body, InnerX, InfoY, InnerW, 96, 8, C.PanelFill)
+
+				local Rows = Make("Frame", {
+					Parent = Body,
+					Position = UDim2.fromOffset(InnerX, ListY),
+					Size = UDim2.fromOffset(InnerW, ListH),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					ClipsDescendants = true,
+					ZIndex = 10,
+				})
+
+				ToolAvatar(Body, 10, InfoY + 5, 87, 87, 9)
+
+				local SelectLabel = TextAt(Body, InnerX, InfoY + 48, InnerW, "select a player", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Center, 12)
+				local NameLabel = TextAt(Body, 106, InfoY + 15, InnerW - 111, "", C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Left, 12)
+				local HealthLabel = TextAt(Body, 106, InfoY + 31, InnerW - 111, "health: 100 / 100", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 12)
+				local TeamLabel = TextAt(Body, 106, InfoY + 45, InnerW - 111, "team: none", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 12)
+				local DistLabel = TextAt(Body, 106, InfoY + 59, InnerW - 111, "distance: 0 studs", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 12)
+
+				local function RefreshInfo()
+					local Has = Selected >= 0 and Selected < #Names
+
+					SelectLabel.Instance.Visible = not Has
+					NameLabel.Instance.Visible = Has
+					HealthLabel.Instance.Visible = Has
+					TeamLabel.Instance.Visible = Has
+					DistLabel.Instance.Visible = Has
+
+					if Has then
+						NameLabel.Instance.Text = Names[Selected + 1]
+					end
+				end
+
+				local function RefreshRows()
+					Rows.Instance:ClearAllChildren()
+
+					local Found = 0
+					local Lower = string.lower(Query)
+
+					for Index, Name in ipairs(Names) do
+						if Lower == "" or string.find(string.lower(Name), Lower, 1, true) then
+							local Row = ToolRow(Rows, 2, 2 + Found * 17, InnerW - 4, Name, Selected == Index - 1, function()
+								Selected = Selected == Index - 1 and -1 or Index - 1
+								RefreshRows()
+								RefreshInfo()
+							end, 11)
+
+							Row.Instance.Name = "\0"
+							Found += 1
+						end
+					end
+
+					if Found == 0 then
+						TextAt(Rows, 0, ListH / 2, InnerW, "no players found", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Center, 11)
+					end
+				end
+
+				ToolField(Body, InnerX, InnerY, InnerW, "", "search players...", function(Text)
+					Query = Text
+					RefreshRows()
+				end, 10)
+
+				RefreshRows()
+				RefreshInfo()
+			end
+
+			local function BuildWaypointsTool(Overlay, Tool, Body, W, H)
+				local InnerX, InnerY = 5, 5
+				local InnerW = W - 10
+				local ListY = 28
+				local ButtonsTop = H - 40
+				local ListH = ButtonsTop - 5 - 1 - ListY
+				local Selected = -1
+				local Waypoints = { }
+
+				FrameBox(Body, InnerX, ListY, InnerW, ListH, 8, C.PanelFill)
+
+				local Rows = Make("Frame", {
+					Parent = Body,
+					Position = UDim2.fromOffset(7, ListY + 2),
+					Size = UDim2.fromOffset(InnerW - 4, ListH - 4),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					ClipsDescendants = true,
+					ZIndex = 10,
+				})
+
+				local Field
+
+				local function Refresh()
+					Rows.Instance:ClearAllChildren()
+
+					for Index, Name in ipairs(Waypoints) do
+						ToolRow(Rows, 0, (Index - 1) * 17, InnerW - 8, Name, Selected == Index - 1, function()
+							Selected = Selected == Index - 1 and -1 or Index - 1
+
+							if Selected >= 0 then
+								Field.Instance.Text = Waypoints[Selected + 1]
+							end
+
+							Refresh()
+						end, 11)
+					end
+				end
+
+				Field = ToolField(Body, InnerX, InnerY, InnerW, "", "waypoint name...", nil, 10)
+
+				local Half = math.floor((InnerW - 4) * 0.5)
+				local SecondX = InnerX + Half + 4
+				local SecondW = InnerW - Half - 4
+
+				ToolButton(Body, InnerX, ButtonsTop, Half, 16, "Save", function()
+					local Name = Field.Instance.Text
+
+					if Name == "" then
+						ToolNotify("enter a waypoint name first")
+					elseif #Waypoints >= 64 then
+						ToolNotify("waypoint list is full")
+					else
+						table.insert(Waypoints, Name)
+						Selected = #Waypoints - 1
+						Refresh()
+						ToolNotify("saved waypoint " .. Name)
+					end
+				end)
+
+				ToolButton(Body, SecondX, ButtonsTop, SecondW, 16, "Overwrite", function()
+					if Selected < 0 then
+						ToolNotify("select a waypoint first")
+					else
+						if Field.Instance.Text ~= "" then
+							Waypoints[Selected + 1] = Field.Instance.Text
+						end
+
+						ToolNotify("overwrote waypoint " .. Waypoints[Selected + 1])
+						Refresh()
+					end
+				end)
+
+				ToolButton(Body, InnerX, ButtonsTop + 20, Half, 16, "Delete", function()
+					if Selected < 0 then
+						ToolNotify("select a waypoint first")
+					else
+						ToolNotify("deleted waypoint " .. Waypoints[Selected + 1])
+						table.remove(Waypoints, Selected + 1)
+						Selected = -1
+						Refresh()
+					end
+				end)
+
+				ToolButton(Body, SecondX, ButtonsTop + 20, SecondW, 16, "Teleport", function()
+					if Selected < 0 then
+						ToolNotify("select a waypoint first")
+					else
+						ToolNotify("teleported to " .. Waypoints[Selected + 1])
+					end
+				end)
+
+				Refresh()
+			end
+
+			local function BuildConfigsTool(Overlay, Tool, Body, W, H)
+				local InnerX, InnerY = 5, 5
+				local InnerW = W - 10
+				local ListY = 28
+				local ButtonsTop = H - 60
+				local ListH = ButtonsTop - 5 - 1 - ListY
+				local const = "Hi dbxlll"
+				local Selected = false
+				local Field
+				local RowPick
+
+				FrameBox(Body, InnerX, ListY, InnerW, ListH, 8, C.PanelFill)
+
+				local Row = ToolRow(Body, InnerX + 2, ListY + 2, InnerW - 4, const, false, function()
+					Selected = not Selected
+
+					if Selected then
+						Field.Instance.Text = const
+					end
+
+					if RowPick then
+						RowPick.BackgroundTransparency = Selected and 0 or 1
+					end
+				end, 12)
+
+				RowPick = Row.Instance:FindFirstChild("Pick")
+
+				if not RowPick then
+					-- ToolRow names its children positionally; use the second fill it owns.
+					local Fills = { }
+
+					for _, Child in Row.Instance:GetChildren() do
+						if Child:IsA("Frame") then
+							table.insert(Fills, Child)
+						end
+					end
+
+					RowPick = Fills[2]
+				end
+
+				TextAt(Body, InnerX + 7 + MeasureText(const) + 4, ListY + 10.5, 100, "(autoloading)", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 13)
+
+				Field = ToolField(Body, InnerX, InnerY, InnerW, "", "config name...", nil, 10)
+
+				local Buttons = { "Save", "Overwrite", "Load", "Delete", "Refresh", "Set Autoload" }
+				local Messages = {
+					"saved config hi dbxlll",
+					"overwrote config hi dbxlll",
+					"loaded config hi dbxlll",
+					"hi dbxlll is the only config, it stays",
+					"found 1 config",
+					"hi dbxlll set to autoload",
+				}
+
+				local Half = math.floor((InnerW - 4) * 0.5)
+
+				for Index, Text in ipairs(Buttons) do
+					local X = InnerX + (Index % 2 == 1 and 0 or Half + 4)
+					local Width = Index % 2 == 1 and Half or InnerW - Half - 4
+					local Y = ButtonsTop + math.floor((Index - 1) / 2) * 20
+
+					ToolButton(Body, X, Y, Width, 16, Text, function()
+						ToolNotify(Messages[Index])
+					end)
+				end
+			end
+
+			local function BuildDexTool(Overlay, Tool, Body, W, H)
+				local InnerX, InnerY = 5, 5
+				local InnerW = W - 10
+				local HintH = 110
+				local HintY = H - 5 - HintH + 1
+				local TreeY = 28
+				local TreeH = HintY - 5 - 1 - TreeY
+
+				ToolSearch(Body, InnerX, InnerY, InnerW, "Search name or class...", function() end, 10)
+				FrameBox(Body, InnerX, TreeY, InnerW, TreeH, 8, C.PanelFill)
+				PanelBox(Body, InnerX, HintY, InnerW, HintH, 8)
+				TextAt(Body, InnerX, HintY + HintH / 2, InnerW, "Right-click for options, left-click to select", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Center, 12)
+			end
+
+			local function BuildPerfTool(Overlay, Tool, Body, W, H)
+				local InnerX, InnerY = 5, 5
+				local InnerW = W - 10
+				local HeaderY = 28
+				local ListY = HeaderY + 20
+				local InfoH = 150
+				local InfoY = H - 5 - InfoH + 1
+				local ListH = InfoY - 5 - 1 - ListY
+				local Columns = {
+					{ "Thread ^", 0.0 },
+					{ "Hz", 0.42 },
+					{ "avg ms", 0.54 },
+					{ "CPU%", 0.68 },
+					{ "Hz graph", 0.80 },
+				}
+
+				ToolSearch(Body, InnerX, InnerY, InnerW, "Filter thread name...", function() end, 10)
+				FrameBox(Body, InnerX, HeaderY, InnerW, 17, 8, C.PanelFill)
+
+				local Span = InnerW - 10
+
+				for _, Column in ipairs(Columns) do
+					TextAt(Body, InnerX + 5 + math.floor(Span * Column[2]), HeaderY + 8.5, 100, Column[1], C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 11)
+				end
+
+				FrameBox(Body, InnerX, ListY, InnerW, ListH, 8, C.PanelFill)
+				TextAt(Body, InnerX, ListY + ListH / 2, InnerW, "too lazy to do ts", C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Center, 11)
+				PanelBox(Body, InnerX, InfoY, InnerW, InfoH, 8)
+				TextAt(Body, InnerX, InfoY + InfoH / 2, InnerW, "Click a thread to see its graphs", C.TextDim, Library.Font, Library.FontSize, Enum.TextXAlignment.Center, 12)
+			end
+
+			local function BuildColorsTool(Overlay, Tool, Body, W, H)
+				local Rows = {
+					{ "Accent", C.HeaderAccentTop },
+					{ "Shine", C.TextTitle },
+					{ "Outline", C.Black },
+					{ "Text Outline", C.Black },
+					{ "Border", C.FrameLight },
+					{ "Background", C.Content },
+					{ "Bg Top", C.HeaderGradTop },
+					{ "Bg Bot", C.HeaderGradBottom },
+					{ "Child Fill", C.PanelFill },
+					{ "Child Top", C.InputTop },
+					{ "Child Bot", C.InputBottom },
+					{ "Grab", C.FillTop },
+					{ "Text", C.Text },
+					{ "Text Dim", C.TextDim },
+					{ "Grad Top", C.FillTop },
+					{ "Grad Bot", C.FillBottom },
+				}
+
+				local FirstY = 11
+
+				for Index, Entry in ipairs(Rows) do
+					local Y = FirstY + (Index - 1) * 14
+
+					TextAt(Body, 8, Y, 140, Entry[1], C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 10)
+
+					local SwatchX = W - 29
+					Fill(Body, SwatchX, Y - 5, 22, 10, C.Black, 10)
+					local Swatch = Fill(Body, SwatchX + 1, Y - 4, 20, 8, Entry[2], 10)
+					Gradient(Swatch, Entry[2], Color3.new(Entry[2].R * 0.8, Entry[2].G * 0.8, Entry[2].B * 0.8))
+				end
+
+				local SliderY = FirstY + #Rows * 14
+
+				TextAt(Body, 8, SliderY, 88, "Menu Glow", C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 10)
+				Fill(Body, 104, SliderY - 3, W - 112, 10, C.Black, 10)
+				Fill(Body, 105, SliderY - 2, W - 114, 8, C.InputBottom, 10)
+				Fill(Body, 105, SliderY - 2, math.floor((W - 114) * 0.25), 8, C.TabAccentTop, 10)
+
+				TextAt(Body, 8, SliderY + 27, 88, "Bg Blur", C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 10)
+				Fill(Body, 104, SliderY + 24, W - 112, 10, C.Black, 10)
+				Fill(Body, 105, SliderY + 25, W - 114, 8, C.InputBottom, 10)
+
+				local ComboY = SliderY + 54
+				TextAt(Body, 8, ComboY + 8, 88, "Preset", C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 10)
+				ToolInput(Body, 104, ComboY, W - 112, 16, 10)
+				TextAt(Body, 109, ComboY + 8, W - 130, "Default", C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 12)
+				TextAt(Body, W - 24, ComboY + 8, 12, "v", C.TextDim, Library.BarFont, Library.BarFontSize, Enum.TextXAlignment.Center, 12)
+
+				ToolButton(Body, 8, ComboY + 33, W - 16, 16, "Apply Theme", function()
+					ToolNotify("applied the Default theme")
+				end)
+			end
+
+			function ToolAvatar(Parent, X, Y, Width, Height, ZIndex)
+				local Z = ZIndex or 9
+
+				Fill(Parent, X, Y, Width, Height, C.Black, Z)
+				local Inner = Fill(Parent, X + 1, Y + 1, Width - 2, Height - 2, C.InputTop, Z)
+				Gradient(Inner, C.InputTop, C.InputBottom)
+
+				local Clip = Make("Frame", {
+					Parent = Parent,
+					Position = UDim2.fromOffset(X + 1, Y + 1),
+					Size = UDim2.fromOffset(Width - 2, Height - 2),
+					BackgroundTransparency = 1,
+					ClipsDescendants = true,
+					ZIndex = Z + 1,
+				})
+
+				local HeadSize = math.floor(math.min(Width, Height) * 0.34)
+				local Head = Make("Frame", {
+					Parent = Clip,
+					Position = UDim2.fromOffset(math.floor((Width - HeadSize) * 0.5) - 1, math.floor(Height * 0.34) - math.floor(HeadSize * 0.5)),
+					Size = UDim2.fromOffset(HeadSize, HeadSize),
+					BackgroundColor3 = C.TextDim,
+					BackgroundTransparency = 0.75,
+					BorderSizePixel = 0,
+					ZIndex = Z + 2,
+				})
+
+				Make("UICorner", { Parent = Head.Instance, CornerRadius = UDim.new(0.5, 0) })
+
+				local Body = Make("Frame", {
+					Parent = Clip,
+					Position = UDim2.fromOffset(math.floor(Width * 0.31), math.floor(Height * 0.34) + HeadSize + 3),
+					Size = UDim2.fromOffset(math.floor(Width * 0.38) * 2, Height),
+					BackgroundColor3 = C.TextDim,
+					BackgroundTransparency = 0.75,
+					BorderSizePixel = 0,
+					ZIndex = Z + 2,
+				})
+
+				Make("UICorner", { Parent = Body.Instance, CornerRadius = UDim.new(0.5, 0) })
+			end
+
+			function Overlay:Apply()
+				if self.WatermarkPanel then
+					self.WatermarkPanel.Instance.Visible = self.State.watermark
+				end
+
+				if self.KeybindsPanel then
+					self.KeybindsPanel.Instance.Visible = self.State.keybinds
+				end
+
+				if self.TargetHudPanel then
+					self.TargetHudPanel.Instance.Visible = self.State.target_hud
+				end
+
+				self:ApplyTools()
+			end
+
+			function Overlay:ApplyTools()
+				if not self.Tools then
+					return
+				end
+
+				local Open = self.Window and self.Window.IsOpen
+
+				for Key, Tool in self.Tools do
+					Tool.Panel.Instance.Visible = Open and self.State[Key] or false
+				end
+
+				if self.PreviewPanel then
+					local VisualsPage = self.Window.Pages[2]
+					local IsVisuals = VisualsPage ~= nil and self.Window.Current == VisualsPage
+					self.PreviewPanel.Instance.Visible = Open and IsVisuals or false
+				end
+			end
+
+			function Overlay:SetFlag(Name, Value)
+				local Key = tostring(Name)
+				self.State[Key] = Value ~= false
+				self:Apply()
+
+				if self.Items and self.Items[Key] then
+					self:PaintItem(self.Items[Key])
+				end
+			end
+
+			function Overlay:PaintItem(Item)
+				local Active = self.State[Item.Key]
+
+				Item.Button.Instance.TextColor3 = Item.Hovered and C.Text or (Active and C.TextActive or C.TextTitle)
+				Item.Button.Instance.FontFace = Active and (Library.BoldFont or Library.Font) or (Library.BarFont or Library.Font)
+			end
+
+			function Overlay:ToggleFlag(Key)
+				local Value = not self.State[Key]
+				self:SetFlag(Key, Value)
+
+				local Lower = string.lower(Key)
+				local Message = Lower .. " " .. (Value and "enabled" or "disabled")
+
+				if Library.Notification then
+					Library:Notification({
+						Title = self.Window and self.Window.UserName or "dbxlll",
+						Message = Message,
+						Time = 5,
+					})
+				end
+			end
+
+			function Overlay:BuildWatermark(Screen)
+				local Window = self.Window
+				local Name = tostring(Window.UserName or "dbxlll")
+				local Build = "build: " .. tostring(Window.BuildDate or "")
+				local Slash = MeasureText("/")
+				local Content = MeasureText(Name) + 55 + MeasureText(Build) + Slash * 2 + 7 * 4
+				local Width = math.ceil(Content + 12 + 10 + 12)
+				local Height = 32
+				local Panel = Make("Frame", {
+					Parent = self.Root,
+					Position = UDim2.fromOffset(Screen.X - 26 - Width, 26 + 20),
+					Size = UDim2.fromOffset(Width, Height),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					ZIndex = 20,
+				})
+
+				Chrome(Panel, Width, Height)
+				FrameBox(Panel, 6, 8, Width - 12, Height - 14, 8)
+
+				local X = 6 + 12
+				local NameLabel = TextAt(Panel, X, 17, MeasureText(Name), Name, C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Left, 9)
+				X += MeasureText(Name) + 7
+				TextAt(Panel, X, 17, Slash, "/", C.TextSeparator, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Left, 9)
+				X += Slash + 7
+
+				local FpsLabel = TextAt(Panel, X, 17, 55, "fps: 60", C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Center, 9)
+				X += 55 + 7
+				TextAt(Panel, X, 17, Slash, "/", C.TextSeparator, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Left, 9)
+				X += Slash + 7
+				TextAt(Panel, X, 17, MeasureText(Build), Build, C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Left, 9)
+
+				self.WatermarkPanel = Panel
+				self.WatermarkName = NameLabel
+
+				local FpsLast = 0
+
+				Library:Connect(RunService.Heartbeat, function()
+					local Now = os.clock()
+
+					if Now - FpsLast < 1 or not Panel.Instance.Parent then
+						return
+					end
+
+					FpsLast = Now
+					FpsLabel.Instance.Text = "fps: " .. tostring(Library.Fps and Library.Fps:Get() or 60)
+				end)
+			end
+
+			function Overlay:CollectBinds()
+				local Binds = { }
+				local Order = {
+					{ Flag = "aimbot.key", Enabled = "aimbot.enabled", Name = "aimbot" },
+					{ Flag = "orbit.key", Enabled = "orbit.enabled", Name = "orbit" },
+					{ Flag = "silent.key", Enabled = "silent.enabled", Name = "silent aim" },
+					{ Flag = "trigger.key", Enabled = "trigger.enabled", Name = "triggerbot" },
+					{ Flag = "visuals.key", Enabled = "visuals.enabled", Name = "esp" },
+				}
+
+				for _, Entry in ipairs(Order) do
+					local Bind = Flags[Entry.Flag]
+					local Enabled = Flags[Entry.Enabled]
+
+					if Enabled == nil then
+						Enabled = true
+					end
+
+					if type(Bind) == "table" and Enabled then
+						local Key = tostring(Bind.Key or "None")
+						local Mode = tostring(Bind.Mode or "Toggle")
+						local Text
+
+						if Mode == "Always" or Key == "None" then
+							Text = "(Always)"
+						else
+							Text = "(" .. Key .. ", " .. string.lower(Mode) .. ")"
+						end
+
+						table.insert(Binds, { Name = Entry.Name, Mode = Text })
+					end
+				end
+
+				return Binds
+			end
+
+			function Overlay:BuildKeybinds(Screen, Force)
+				if not self.Root then
+					return
+				end
+
+				local Binds = self:CollectBinds()
+				local Signature = ""
+
+				for _, Bind in ipairs(Binds) do
+					Signature ..= Bind.Name .. "|" .. Bind.Mode .. ";"
+				end
+
+				if not Force and Signature == self.BindSignature then
+					return
+				end
+
+				self.BindSignature = Signature
+
+				if not self.KeybindsPanel then
+					self.KeybindsPanel = Make("Frame", {
+						Parent = self.Root,
+						Position = UDim2.fromOffset(10, math.floor(Screen.Y * 0.4)),
+						Size = UDim2.fromOffset(152, 32),
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+						ZIndex = 30,
+					})
+				end
+
+				local Panel = self.KeybindsPanel
+				Panel.Instance:ClearAllChildren()
+
+				local Width = 152
+
+				for _, Bind in ipairs(Binds) do
+					local Needed = math.ceil(12 + 9 + MeasureText(Bind.Name) + 20 + MeasureText(Bind.Mode) + 8)
+					Width = math.max(Width, Needed)
+				end
+
+				local BodyHeight = #Binds > 0 and (4 + #Binds * 14) or 0
+				local Height = 26 + (BodyHeight > 0 and BodyHeight + 3 or 0) + 6
+
+				Panel.Instance.Size = UDim2.fromOffset(Width, Height)
+
+				Chrome(Panel, Width, Height)
+				FrameBox(Panel, 6, 8, Width - 12, 18, 8)
+				TextAt(Panel, 11, 17, Width - 22, "Keybinds", C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Left, 9)
+
+				if BodyHeight > 0 then
+					FrameBox(Panel, 6, 29, Width - 12, BodyHeight, 8)
+
+					for Index, Bind in ipairs(Binds) do
+						local Row = 29 + 9 + (Index - 1) * 14
+
+						TextAt(Panel, 6 + 9, Row, Width - 37, Bind.Name, C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Left, 9)
+						TextAt(Panel, 6, Row, Width - 21, Bind.Mode, C.TextDim, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Right, 9)
+					end
+				end
+
+				Panel.Instance.Visible = self.State.keybinds
+			end
+
+			function Overlay:BuildTargetHud(Screen)
+				local Width, Height = 192, 84
+				local Panel = Make("Frame", {
+					Parent = self.Root,
+					Position = UDim2.fromOffset(Screen.X - 26 - Width, 26 + 20 + 32 + 6),
+					Size = UDim2.fromOffset(Width, Height),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					ZIndex = 40,
+				})
+
+				Chrome(Panel, Width, Height)
+
+				local TitleWidth = Width - 12
+				FrameBox(Panel, 6, 8, TitleWidth, 18, 8)
+				TextAt(Panel, 6, 17, TitleWidth, "Target", C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Center, 9)
+
+				local BodyWidth = Width - 12
+				local BodyHeight = Height - 36
+				FrameBox(Panel, 6, 30, BodyWidth, BodyHeight, 8)
+
+				-- draw::avatar is a gradient box in target_hud
+				Fill(Panel, 8, 32, 44, 44, C.Black, 9)
+				local Pfp = Fill(Panel, 9, 33, 42, 42, C.InputTop, 9)
+				Gradient(Pfp, C.InputTop, C.InputBottom)
+
+				TextAt(Panel, 55, 38, 100, "ext", C.TextTarget, Library.Font, Library.FontSize, Enum.TextXAlignment.Left, 9)
+
+				local BarWidth = Width - 64
+				local BarHeight = 30
+				local BarX, BarY = 54, 44
+
+				Fill(Panel, BarX, BarY, BarWidth, BarHeight, C.Black, 9)
+				Fill(Panel, BarX + 1, BarY + 1, BarWidth - 2, BarHeight - 2, C.InputBottom, 9)
+
+				if BarWidth > 4 then
+					Fill(Panel, BarX + 1, BarY + 1, BarWidth - 2, BarHeight - 2, C.HealthLight, 10)
+					Fill(Panel, BarX + 2, BarY + 2, BarWidth - 4, BarHeight - 4, C.HealthTop, 10)
+					local Health = Fill(Panel, BarX + 2, BarY + 2, BarWidth - 4, BarHeight - 4, C.HealthTop, 11)
+					Gradient(Health, C.HealthTop, C.HealthBottom)
+					Fill(Panel, BarX + 2, BarY + 2, BarWidth - 4, 1, C.HealthAccent, 12)
+					Fill(Panel, BarX + 2, BarY + 3, BarWidth - 4, 1, C.HealthShade, 12)
+				end
+
+				TextAt(Panel, BarX, BarY + 15, BarWidth, "100 / 100", C.Text, Library.Font, Library.FontSize, Enum.TextXAlignment.Center, 13)
+
+				self.TargetHudPanel = Panel
+			end
+
+			function Overlay:BuildTopBar(Screen)
+				local Window = self.Window
+				local Bar = Make("Frame", {
+					Parent = self.Root,
+					Position = UDim2.fromOffset(0, 0),
+					Size = UDim2.new(1, 0, 0, 26),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					ZIndex = 50,
+				})
+
+				local function BarFill(Y, Height, Color, ZIndex)
+					return Make("Frame", {
+						Parent = Bar,
+						Position = UDim2.fromOffset(0, Y),
+						Size = UDim2.new(1, 0, 0, Height),
+						BackgroundColor3 = Color,
+						BorderSizePixel = 0,
+						ZIndex = ZIndex or 51,
+					})
+				end
+
+				BarFill(0, 1, C.HeaderAccentTop, 51)
+				BarFill(1, 1, C.HeaderAccentBottom, 51)
+				local Body = BarFill(2, 23, C.TopBarTop, 51)
+				Gradient(Body, C.TopBarTop, C.TopBarBottom)
+				BarFill(25, 1, C.Black, 52)
+
+				local Content = Make("Frame", {
+					Parent = Bar,
+					Position = UDim2.fromOffset(10, 0),
+					Size = UDim2.new(1, -20, 1, 0),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					ZIndex = 53,
+				})
+
+				Make("UIListLayout", {
+					Parent = Content.Instance,
+					FillDirection = Enum.FillDirection.Horizontal,
+					Padding = UDim.new(0, 7),
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					VerticalAlignment = Enum.VerticalAlignment.Center,
+				})
+
+				local Order = 0
+				local Brand = tostring(Window.UserName or "dbxlll")
+
+				Make("TextLabel", {
+					Parent = Content.Instance,
+					LayoutOrder = 1,
+					AutomaticSize = Enum.AutomaticSize.X,
+					Size = UDim2.fromOffset(0, 14),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Text = Brand,
+					TextColor3 = C.Text,
+					FontFace = Library.BoldFont,
+					TextSize = Library.FontSize,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Center,
+					TextScaled = false,
+					TextStrokeTransparency = 1,
+					ZIndex = 53,
+				})
+
+				Order += 1
+
+				Make("TextLabel", {
+					Parent = Content.Instance,
+					LayoutOrder = 2,
+					AutomaticSize = Enum.AutomaticSize.X,
+					Size = UDim2.fromOffset(0, 14),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Text = "|",
+					TextColor3 = C.TextSeparator,
+					FontFace = Library.BarFont,
+					TextSize = Library.BarFontSize,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Center,
+					TextScaled = false,
+					TextStrokeTransparency = 1,
+					ZIndex = 53,
+				})
+
+				Order += 1
+
+				local Items = {
+					{ Text = "Watermark", Key = "watermark" },
+					{ Text = "Players", Key = "players" },
+					{ Text = "Waypoints", Key = "waypoints" },
+					{ Text = "Themes", Key = "themes" },
+					{ Text = "Keybinds", Key = "keybinds" },
+					{ Text = "Target HUD", Key = "target_hud" },
+					{ Text = "Dex", Key = "dex" },
+					{ Text = "Config", Key = "configs" },
+					{ Text = "Perf", Key = "perf" },
+				}
+
+				self.Items = { }
+
+				for _, Item in ipairs(Items) do
+					Order += 1
+
+					Make("TextLabel", {
+						Parent = Content.Instance,
+						LayoutOrder = Order,
+						AutomaticSize = Enum.AutomaticSize.X,
+						Size = UDim2.fromOffset(0, 14),
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+						Text = "/",
+						TextColor3 = C.TextSeparator,
+						FontFace = Library.BarFont,
+						TextSize = Library.BarFontSize,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						TextYAlignment = Enum.TextYAlignment.Center,
+						TextScaled = false,
+						TextStrokeTransparency = 1,
+						ZIndex = 53,
+					})
+
+					Order += 1
+
+					local Button = Make("TextButton", {
+						Parent = Content.Instance,
+						LayoutOrder = Order,
+						AutomaticSize = Enum.AutomaticSize.X,
+						Size = UDim2.fromOffset(0, 26),
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+						Text = "",
+						AutoButtonColor = false,
+						ZIndex = 54,
+					})
+
+					Make("UIPadding", {
+						Parent = Button.Instance,
+						PaddingLeft = UDim.new(0, 3),
+						PaddingRight = UDim.new(0, 3),
+					})
+
+					Button.Instance.Text = Item.Text
+					Button.Instance.TextColor3 = C.TextTitle
+					Button.Instance.TextSize = Library.BarFontSize
+					Button.Instance.FontFace = Library.BarFont
+					Button.Instance.TextXAlignment = Enum.TextXAlignment.Left
+					Button.Instance.TextYAlignment = Enum.TextYAlignment.Center
+					Button.Instance.TextScaled = false
+					Button.Instance.TextStrokeTransparency = 1
+
+					local Entry = {
+						Key = Item.Key,
+						Text = Item.Text,
+						Button = Button,
+						Hovered = false,
+					}
+
+					Button:Connect("MouseButton1Down", function()
+						self:ToggleFlag(Item.Key)
+					end)
+
+					Button:Connect("MouseEnter", function()
+						Entry.Hovered = true
+						self:PaintItem(Entry)
+					end)
+
+					Button:Connect("MouseLeave", function()
+						Entry.Hovered = false
+						self:PaintItem(Entry)
+					end)
+
+					self.Items[Item.Key] = Entry
+					self:PaintItem(Entry)
+				end
+
+				local Clock = Make("TextLabel", {
+					Parent = Bar,
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, -10, 0, 6),
+					Size = UDim2.fromOffset(180, 14),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Text = "",
+					TextColor3 = C.Text,
+					FontFace = Library.BarFont,
+					TextSize = Library.BarFontSize,
+					TextXAlignment = Enum.TextXAlignment.Right,
+					TextYAlignment = Enum.TextYAlignment.Center,
+					TextScaled = false,
+					TextStrokeTransparency = 1,
+					ZIndex = 55,
+				})
+
+				self.TopBar = Bar
+
+				local MainFrame = Window.Items and Window.Items.MainFrame
+
+				local function UpdateInteractive()
+					local Visible = Window.IsOpen and MainFrame and MainFrame.Instance.Visible or false
+
+					for _, Entry in self.Items do
+						Entry.Button.Instance.Active = Visible
+					end
+
+					self:ApplyTools()
+				end
+
+				UpdateInteractive()
+
+				if MainFrame then
+					MainFrame.Instance:GetPropertyChangedSignal("Visible"):Connect(UpdateInteractive)
+				end
+
+				local ClockLast = 0
+
+				Library:Connect(RunService.Heartbeat, function()
+					local Now = os.clock()
+
+					if Now - ClockLast < 1 or not Bar.Instance.Parent then
+						return
+					end
+
+					ClockLast = Now
+					Clock.Instance.Text = os.date("%I:%M %p %m/%d/%Y") or ""
+				end)
+			end
+
+			function Overlay:BuildPreview(Screen)
+				local Width = 330
+				local Height = 668
+				local WindowLeft = math.floor((Screen.X - 644) * 0.5)
+				local WindowTop = math.floor((Screen.Y - Height) * 0.5)
+				local X = WindowLeft + 644 + 10
+
+				local Panel = Make("Frame", {
+					Parent = self.Root,
+					Position = UDim2.fromOffset(X, WindowTop),
+					Size = UDim2.fromOffset(Width, Height),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Visible = false,
+					ZIndex = 45,
+				})
+
+				Chrome(Panel, Width, Height)
+				FrameBox(Panel, 6, 8, Width - 12, 18, 8)
+				TextAt(Panel, 6, 17, Width - 12, "Preview", C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Center, 9)
+				FrameBox(Panel, 6, 30, Width - 12, Height - 36, 8)
+
+				self.PreviewPanel = Panel
+
+				local MainFrame = self.Window.Items and self.Window.Items.MainFrame
+
+				if MainFrame then
+					local function Follow()
+						local Position = MainFrame.Instance.AbsolutePosition
+						Panel.Instance.Position = UDim2.fromOffset(math.floor(Position.X + 644 + 10), math.floor(Position.Y))
+					end
+
+					Follow()
+					MainFrame.Instance:GetPropertyChangedSignal("Position"):Connect(Follow)
+				end
+			end
+
+			function Overlay:BuildTools(Screen)
+				self.Tools = { }
+
+				local Definitions = {
+					{ Key = "players", Title = "Playerlist", W = 440, H = 340, Build = BuildPlayersTool },
+					{ Key = "waypoints", Title = "Waypoints", W = 355, H = 388, Build = BuildWaypointsTool },
+					{ Key = "themes", Title = "Colors", W = 230, H = 373, Build = BuildColorsTool },
+					{ Key = "dex", Title = "Dex Explorer", W = 490, H = 680, Build = BuildDexTool },
+					{ Key = "configs", Title = "Config", W = 296, H = 338, Build = BuildConfigsTool },
+					{ Key = "perf", Title = "Thread Performance", W = 540, H = 710, Build = BuildPerfTool },
+				}
+
+				for Index, Definition in ipairs(Definitions) do
+					local W, H = Definition.W, Definition.H
+					local Shift = (Index - 1) * 24
+					local X = math.floor((Screen.X - W) * 0.5) + Shift
+					local Y = math.floor((Screen.Y - H) * 0.5) + Shift
+
+					X = math.clamp(X, 0, math.max(0, Screen.X - W))
+					Y = math.clamp(Y, 26, math.max(26, Screen.Y - H))
+
+					local Panel = Make("Frame", {
+						Parent = self.Root,
+						Position = UDim2.fromOffset(X, Y),
+						Size = UDim2.fromOffset(W, H),
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+						Visible = false,
+						ZIndex = 60 + Index,
+					})
+
+					local Tool = {
+						Key = Definition.Key,
+						Panel = Panel,
+						W = W,
+						H = H,
+					}
+
+					Chrome(Panel, W, H)
+					FrameBox(Panel, 6, 8, W - 12, 18, 8)
+					TextAt(Panel, 6, 17, W - 12, Definition.Title, C.Text, Library.BoldFont, Library.FontSize, Enum.TextXAlignment.Center, 9)
+
+					local Body = Make("Frame", {
+						Parent = Panel,
+						Position = UDim2.fromOffset(6, 30),
+						Size = UDim2.fromOffset(W - 12, H - 36),
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+						ClipsDescendants = true,
+						ZIndex = 10,
+					})
+
+					FrameBox(Panel, 6, 30, W - 12, H - 36, 8)
+					Definition.Build(self, Tool, Body, W - 12, H - 36)
+
+					local Drag = Make("TextButton", {
+						Parent = Panel,
+						Position = UDim2.fromOffset(6, 8),
+						Size = UDim2.fromOffset(W - 12, 18),
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+						Text = "",
+						AutoButtonColor = false,
+						ZIndex = 20,
+					})
+
+					Drag:Connect("InputBegan", function(Input)
+						if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+							self.DragTool = Tool
+							self.DragMouse = Input.Position
+							self.DragPosition = Panel.Instance.Position
+						end
+					end)
+
+					self.Tools[Definition.Key] = Tool
+				end
+			end
+
+			function Overlay.Setup(Window)
+				if Overlay.Root then
+					Overlay.Window = Window
+					return
+				end
+
+				Overlay.Window = Window
+
+				local Screen = Vector2.new(1920, 1080)
+
+				if workspace.CurrentCamera then
+					Screen = workspace.CurrentCamera.ViewportSize
+				end
+
+				local Layer = Library:CreateLayer()
+				Layer.Instance.DisplayOrder = 900000
+				Layer.Instance.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+				local Root = Make("Frame", {
+					Parent = Layer.Instance,
+					Size = UDim2.new(1, 0, 1, 0),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					ZIndex = 1,
+				})
+
+				Overlay.Root = Root
+				Overlay.Layer = Layer
+
+				Overlay:BuildWatermark(Screen)
+				Overlay:BuildKeybinds(Screen, true)
+				Overlay:BuildTargetHud(Screen)
+				Overlay:BuildTopBar(Screen)
+				Overlay:BuildTools(Screen)
+				Overlay:BuildPreview(Screen)
+				Overlay:Apply()
+
+				Library:Connect(UserInputService.InputChanged, function(Input)
+					if not Overlay.DragTool or Input.UserInputType ~= Enum.UserInputType.MouseMovement then
+						return
+					end
+
+					local Tool = Overlay.DragTool
+					local Start = Overlay.DragMouse
+					local Base = Overlay.DragPosition
+					local X = Base.X.Offset + (Input.Position.X - Start.X)
+					local Y = Base.Y.Offset + (Input.Position.Y - Start.Y)
+
+					X = math.clamp(X, 0, math.max(0, Screen.X - Tool.W))
+					Y = math.clamp(Y, 26, math.max(26, Screen.Y - Tool.H))
+
+					Tool.Panel.Instance.Position = UDim2.fromOffset(math.floor(X), math.floor(Y))
+				end)
+
+				Library:Connect(UserInputService.InputEnded, function(Input)
+					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+						Overlay.DragTool = nil
+					end
+				end)
+
+				Library.WatermarkObject = {
+					SetVisibility = function(Value)
+						Overlay:SetFlag("watermark", Value)
+					end,
+				}
+
+				Library.KeyList = {
+					SetVisibility = function(Value)
+						Overlay:SetFlag("keybinds", Value)
+					end,
+				}
+
+				if Library.Fps then
+					if (Library.Fps.Value or 0) <= 0 then
+						Library.Fps.Value = 60
+					end
+
+					Library:Connect(RunService.RenderStepped, function()
+						Library.Fps.Push()
+					end)
+				end
+
+				local BindLast = 0
+
+				Library:Connect(RunService.Heartbeat, function()
+					local Now = os.clock()
+
+					if Now - BindLast < 0.25 or not Root.Instance.Parent then
+						return
+					end
+
+					BindLast = Now
+					Overlay:BuildKeybinds(Screen, false)
+					Overlay:ApplyTools()
+				end)
+
+				if Library.Notification then
+					task.defer(function()
+						Library:Notification({
+							Title = Window.UserName,
+							Message = "press insert to toggle the menu",
+							Time = 5,
+						})
+					end)
+				end
+			end
+
+			Alpine.SetupOverlay = function(Window)
+				Overlay.Setup(Window)
 			end
 
 
