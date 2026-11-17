@@ -1,4 +1,5 @@
 -- Chain Juju-compatible Drawing UI component.
+-- Base source: panduh16/juju ui.lua, snapshot sha256 d3a05d65b61fedb90a06f01e9acabc06cdf002a55658593281a39a59dd696d54.
 -- Direct contract: local ui = loadstring(game:HttpGet(raw_url))()
 -- Returns the UI library table (menu, flags, drawing_proxy, tween, create_connection, etc.).
 -- This is the UI engine, not the Chain feature/control wiring; the parent script builds those.
@@ -51,7 +52,7 @@ local function EmbeddedJujuUI()
 	local wait = task["wait"]
 	local sqrt = math["sqrt"]
 	local type = type
-	base64_decode = (crypt and crypt["base64decode"]) or base64_decode or B64
+	local base64_decode = (crypt and crypt["base64decode"]) or base64_decode or B64
 	local juju_call
 	do
 		local _id_raise = setthreadidentity or setidentity or set_thread_identity
@@ -105,6 +106,23 @@ local function EmbeddedJujuUI()
 	local connections = {}
 	local addon_data = {}
 	local heartbeat = {}
+	local heartbeat_connection = nil
+	local function stop_heartbeat_if_idle()
+		if #heartbeat == 0 and heartbeat_connection then
+			heartbeat_connection:Disconnect()
+			heartbeat_connection = nil
+		end
+	end
+	local function ensure_heartbeat()
+		if heartbeat_connection then return end
+		heartbeat_connection = run_service["Heartbeat"]:Connect(function(dt)
+			for i = 1, #heartbeat do
+				local fn = heartbeat[i]
+				if fn then fn(dt) end
+			end
+			stop_heartbeat_if_idle()
+		end)
+	end
 	local flags = {
 		["keybinds_position"] = { 15, camera["ViewportSize"]["Y"] / 2 - 10 }, ["loaded_addons"] = {}, ["favorites"] = {},
 	}
@@ -220,6 +238,7 @@ local function EmbeddedJujuUI()
 				heartbeat[#heartbeat + 1] = tween
 				active_tweens[property][object] = tween
 			end
+			ensure_heartbeat()
 			delay(tween_duration, function()
 				for property, tween in pairs(tween_functions) do
 					if active_tweens[property][object] == tween then active_tweens[property][object] = nil end
@@ -231,6 +250,7 @@ local function EmbeddedJujuUI()
 						end
 					end
 				end
+				stop_heartbeat_if_idle()
 			end)
 		end)
 	end
@@ -1172,6 +1192,7 @@ local function EmbeddedJujuUI()
 					break
 				end
 			end
+			stop_heartbeat_if_idle()
 			if active_typing then
 				active_typing["Text"] = old_text
 				active_typing = false
@@ -1213,6 +1234,7 @@ local function EmbeddedJujuUI()
 				active_typing = label
 				type_line["Visible"] = true
 				heartbeat[#heartbeat + 1] = type_function
+				ensure_heartbeat()
 				local current_input = ""
 				old_text = label["Text"]
 				local items = Enum["KeyCode"]:GetEnumItems()
@@ -2809,46 +2831,46 @@ local function EmbeddedJujuUI()
 			menu_open = not menu_open
 			local half_transparency = menu_open and half_transparency or hide_transparency
 			local transparency = menu_open and show_transparency or hide_transparency
-			tween(cursor, transparency, exponential, out, 0.18)
+			tween(cursor, transparency, exponential, out, 0.14)
 			local mouse_position = get_mouse_location(user_input_service)
 			user_input_service["MouseIconEnabled"] = not menu_open
 			cursor["Position"] = udim2_new(0, mouse_position["X"], 0, mouse_position["Y"])
 			frame["Visible"] = not a
 			inside["Visible"] = not a
-			tween(frame, transparency, exponential, out, 0.18)
-			tween(inside, transparency, exponential, out, 0.18)
-			tween(logo, transparency, exponential, out, 0.18)
-			tween(juju_text, transparency, exponential, out, 0.18)
-			tween(juju_tail, transparency, exponential, out, 0.18)
-			tween(build_text, transparency, exponential, out, 0.18)
-			tween(right_side, transparency, exponential, out, 0.18)
-			tween(right_side_divider, transparency, exponential, out, 0.18)
-			tween(search_image, transparency, exponential, out, 0.18)
-			tween(themes_image, transparency, exponential, out, 0.18)
-			tween(settings_image, transparency, exponential, out, 0.18)
-			tween(tab_line, half_transparency, exponential, out, 0.18)
-			tween(search_border, transparency, exponential, out, 0.18)
-			tween(search_inside, transparency, exponential, out, 0.18)
-			tween(search_text, transparency, exponential, out, 0.18)
+			tween(frame, transparency, exponential, out, 0.14)
+			tween(inside, transparency, exponential, out, 0.14)
+			tween(logo, transparency, exponential, out, 0.14)
+			tween(juju_text, transparency, exponential, out, 0.14)
+			tween(juju_tail, transparency, exponential, out, 0.14)
+			tween(build_text, transparency, exponential, out, 0.14)
+			tween(right_side, transparency, exponential, out, 0.14)
+			tween(right_side_divider, transparency, exponential, out, 0.14)
+			tween(search_image, transparency, exponential, out, 0.14)
+			tween(themes_image, transparency, exponential, out, 0.14)
+			tween(settings_image, transparency, exponential, out, 0.14)
+			tween(tab_line, half_transparency, exponential, out, 0.14)
+			tween(search_border, transparency, exponential, out, 0.14)
+			tween(search_inside, transparency, exponential, out, 0.14)
+			tween(search_text, transparency, exponential, out, 0.14)
 			for name, group in pairs(menu["groups"]) do
-				tween(group["text"], half_transparency, exponential, out, 0.18)
-				tween(group["line"], half_transparency, exponential, out, 0.18)
+				tween(group["text"], half_transparency, exponential, out, 0.14)
+				tween(group["line"], half_transparency, exponential, out, 0.14)
 				for name, tab in pairs(group["tabs"]) do
-					tween(tab["text"], transparency, exponential, out, 0.18)
+					tween(tab["text"], transparency, exponential, out, 0.14)
 					if actives["tab"] == tab or (tab["frame"] and tab["frame"]["Visible"]) then
 						if actives["tab"] ~= tab and not menu_open and tab["frame"] then tab["frame"]["Visible"] = false end
 						for _, section in pairs(tab["sections"]) do
-							tween(section["border"], transparency, exponential, out, 0.18)
-							tween(section["line_two"], half_transparency, exponential, out, 0.18)
-							tween(section["inside"], transparency, exponential, out, 0.18)
-							tween(section["label"], half_transparency, exponential, out, 0.18)
-							tween(section["line"], half_transparency, exponential, out, 0.18)
+							tween(section["border"], transparency, exponential, out, 0.14)
+							tween(section["line_two"], half_transparency, exponential, out, 0.14)
+							tween(section["inside"], transparency, exponential, out, 0.14)
+							tween(section["label"], half_transparency, exponential, out, 0.14)
+							tween(section["line"], half_transparency, exponential, out, 0.14)
 							local search_border = section["search_border"]
 							if search_border then
-								tween(search_border, transparency, exponential, out, 0.18)
-								tween(section["search_inside"], transparency, exponential, out, 0.18)
-								tween(section["search_text"], transparency, exponential, out, 0.18)
-								tween(section["search_image"], transparency, exponential, out, 0.18)
+								tween(search_border, transparency, exponential, out, 0.14)
+								tween(section["search_inside"], transparency, exponential, out, 0.14)
+								tween(section["search_text"], transparency, exponential, out, 0.14)
+								tween(section["search_image"], transparency, exponential, out, 0.14)
 							end
 							for _, element in pairs(section["elements"]) do
 								for _, drawing in pairs(element["drawings"]) do
@@ -2863,7 +2885,7 @@ local function EmbeddedJujuUI()
 											or transparency,
 										exponential,
 										out,
-										0.18
+										0.14
 									)
 								end
 							end
@@ -3159,11 +3181,11 @@ local function EmbeddedJujuUI()
 		function section_drag.new_placeholder(tab, section_item)
 			local border = drawing_proxy["new"]("Image", {
 				["Parent"] = tab["frame"], ["Position"] = section_item["border"]["position"], ["Size"] = section_item["border"]["size"], ["Color"] = menu["colors"]["accent"],
-				["Transparency"] = 0.16, ["Rounding"] = 4, ["Data"] = pixel_image_data, ["ZIndex"] = 750, ["Visible"] = true,
+				["Transparency"] = 1, ["Rounding"] = 4, ["Data"] = pixel_image_data, ["ZIndex"] = 750, ["Visible"] = false,
 			})
 			local inside_placeholder = drawing_proxy["new"]("Image", {
 				["Parent"] = border, ["Position"] = udim2_new(0, 1, 0, 1), ["Size"] = udim2_new(1, -2, 1, -2), ["Color"] = menu["colors"]["section"],
-				["Transparency"] = 0.88, ["Rounding"] = 4, ["Data"] = pixel_image_data, ["ZIndex"] = 751, ["Visible"] = true,
+				["Transparency"] = 1, ["Rounding"] = 4, ["Data"] = pixel_image_data, ["ZIndex"] = 751, ["Visible"] = false,
 			})
 			return { _placeholder = true, side = section_item["side"], size = section_item["size"], border = border, inside = inside_placeholder }
 		end
@@ -3283,9 +3305,17 @@ local function EmbeddedJujuUI()
 					section_drag.finish(state, false)
 					return
 				end
+				local current = state["current_position"]
+				local target = state["target_position"]
 				local alpha = clamp((type(dt) == "number" and dt or 1 / 60) * 24, 0, 1)
-				state["current_position"] = state["current_position"]:Lerp(state["target_position"], alpha)
-				section_item["border"]["Position"] = udim2_new(0, state["current_position"]["X"], 0, state["current_position"]["Y"])
+				local next_position = current:Lerp(target, alpha)
+				if (next_position - current).Magnitude >= 0.5 then
+					state["current_position"] = next_position
+					section_item["border"]["Position"] = udim2_new(0, next_position["X"], 0, next_position["Y"])
+				elseif (target - current).Magnitude > 0 then
+					state["current_position"] = target
+					section_item["border"]["Position"] = udim2_new(0, target["X"], 0, target["Y"])
+				end
 			end)
 			return true
 		end
@@ -3306,8 +3336,12 @@ local function EmbeddedJujuUI()
 			local height = state["height"] or section_item["border"]["real_size"]["Y"]
 			local x = clamp(mouse_position["X"] - frame_position["X"] - state["offset"]["X"], 0, math.max(frame_size["X"] - width, 0))
 			local y = clamp(mouse_position["Y"] - frame_position["Y"] - state["offset"]["Y"], 0, math.max(frame_size["Y"] - height, 0))
-			state["target_position"] = vector2_new(x, y)
-			section_item["border"]["Size"] = udim2_new(0, width, 0, height)
+			local target_position = vector2_new(x, y)
+			if (target_position - state["target_position"]).Magnitude >= 0.5 then
+				state["target_position"] = target_position
+			end
+			local wanted_size = udim2_new(0, width, 0, height)
+			if section_item["border"]["Size"] ~= wanted_size then section_item["border"]["Size"] = wanted_size end
 			if state["valid"] then
 				local middle = frame_position["X"] + frame_size["X"] * 0.5
 				local target_side = mouse_position["X"] < middle and 1 or 2
@@ -3510,11 +3544,11 @@ local function EmbeddedJujuUI()
 			if side ~= 3 and tab["name"] ~= "reach" then
 				section_drag_handle = drawing_proxy["new"]("Square", {
 					["Parent"] = section_inside, ["Position"] = udim2_new(0, 6, 0, -9), ["Size"] = udim2_new(1, -12, 0, 18), ["Color"] = menu["colors"]["accent"],
-					["Transparency"] = 1, ["Filled"] = true, ["ZIndex"] = 5, ["Visible"] = true,
+					["Transparency"] = 0, ["Filled"] = true, ["ZIndex"] = 5, ["Visible"] = true,
 				})
 			end
 			local element_holder = drawing_proxy["new"]("Square", {
-				["Parent"] = section_inside, ["Position"] = udim2_new(0, 14, 0, 10), ["Size"] = udim2_new(1, -28, 1, -20),
+				["Parent"] = section_inside, ["Position"] = udim2_new(0, 8, 0, 10), ["Size"] = udim2_new(1, -16, 1, -20),
 				["Transparency"] = 0, ["Filled"] = true, ["Visible"] = true,
 			})
 			new_section["border"] = section_border
@@ -3569,7 +3603,7 @@ local function EmbeddedJujuUI()
 				["Transparency"] = 0.5, ["Visible"] = true,
 			})
 			local element_holder = drawing_proxy["new"]("Square", {
-				["Parent"] = section_inside, ["Position"] = udim2_new(0, 14, 0, 10), ["Size"] = udim2_new(1, -28, 1, -20),
+				["Parent"] = section_inside, ["Position"] = udim2_new(0, 8, 0, 10), ["Size"] = udim2_new(1, -16, 1, -20),
 				["Transparency"] = 0, ["Filled"] = true, ["Visible"] = true,
 			})
 			local search_border = drawing_proxy["new"]("Image", {
@@ -3860,7 +3894,7 @@ local function EmbeddedJujuUI()
 			local position = info["position"]
 			local parent = info["parent"]
 			local frame = drawing_proxy["new"]("Square", {
-				["Parent"] = parent, ["Position"] = position, ["Size"] = udim2_new(1, -20, 0, 12), ["Transparency"] = 0,
+				["Parent"] = parent, ["Position"] = position, ["Size"] = udim2_new(1, -16, 0, 12), ["Transparency"] = 0,
 				["Visible"] = true,
 			})
 			local zindex = parent["ZIndex"] + 1
@@ -4591,7 +4625,7 @@ local function EmbeddedJujuUI()
 		function section:create_element(info, elements, fake)
 			local position = self["total_y_size"]
 			local new_element, total_y_size = element["new"]({
-				["text"] = info["name"], ["parent"] = self["inside"], ["position"] = udim2_new(0, 14, 0, position), ["fake"] = fake,
+				["text"] = info["name"], ["parent"] = self["inside"], ["position"] = udim2_new(0, 8, 0, position), ["fake"] = fake,
 				["old_visible"] = true, ["section"] = self,
 			}, elements)
 			self["total_y_size"] = self["total_y_size"] + (total_y_size)
@@ -4608,7 +4642,7 @@ local function EmbeddedJujuUI()
 			for i = 1, #elements do
 				local element = elements[i]
 				if element["visible"] then
-					element["frame"]["Position"] = udim2_new(0, 14, 0, total_size)
+					element["frame"]["Position"] = udim2_new(0, 8, 0, total_size)
 					total_size = total_size + (element["total_y_size"])
 				end
 			end
@@ -6220,6 +6254,10 @@ local function EmbeddedJujuUI()
 						if element["toggle_flag"] then pcall(function() element:set_toggle(false) end) end
 					end
 				end
+				if heartbeat_connection then
+					heartbeat_connection:Disconnect()
+					heartbeat_connection = nil
+				end
 				for i = #heartbeat, 1, -1 do heartbeat[i] = nil end
 				for _, tbl in pairs(active_tweens) do
 					for k in pairs(tbl) do tbl[k] = nil end
@@ -6233,15 +6271,6 @@ local function EmbeddedJujuUI()
 				for instance, mt in pairs(metatables) do pcall(setrawmetatable, instance, mt) end
 				if type(old_drawing) == "table" and type(old_drawing["_UNLOAD"]) == "function" then pcall(old_drawing["_UNLOAD"]) end
 			end
-			create_connection(
-				run_service["Heartbeat"],
-				LPH_NO_VIRTUALIZE(function(dt)
-					for i = 1, #heartbeat do
-						local fn = heartbeat[i]
-						if fn then fn(dt) end
-					end
-				end)
-			)
 			local s, data = pcall(function()
 				return http_service:JSONDecode(readfile(file_path .. "/data.dat"))
 			end)
