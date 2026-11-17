@@ -53,6 +53,101 @@ local function EmbeddedJujuUI()
 	local sqrt = math["sqrt"]
 	local type = type
 	local base64_decode = (crypt and crypt["base64decode"]) or base64_decode or B64
+	-- Optional Lucide assets are resolved once and cached; embedded icons stay as the offline fallback.
+	local Lucide = (function()
+		local LUCIDE_URL = "https://github.com/latte-soft/lucide-roblox/releases/latest/download/lucide-roblox.luau"
+		local provider, resolved, started = nil, false, false
+		local cache, pending = {}, {}
+		local icons = { search = true, palette = true, settings = true, keyboard = true, check = true, ["chevron-down"] = true }
+		local function asProvider(source)
+			if type(source) == "table" and type(source.GetAsset) == "function" then
+				return function(name, size) return source.GetAsset(name, size) end
+			end
+			if type(source) == "function" then return source end
+			return nil
+		end
+		local function setProvider(source)
+			provider, resolved = asProvider(source), true
+			if table.clear then
+				table.clear(cache)
+			else
+				for key in pairs(cache) do cache[key] = nil end
+			end
+		end
+		local function getProvider()
+			if resolved then return provider end
+			local ok, result = pcall(function()
+				local source = game:HttpGet(LUCIDE_URL)
+				assert(type(source) == "string" and #source > 1000, "invalid Lucide module")
+				local chunk = assert(loadstring(source, "=lucide-roblox"), "could not compile Lucide module")
+				return chunk()
+			end)
+			setProvider(ok and result or nil)
+			return provider
+		end
+		local function normalize(asset)
+			if type(asset) == "number" then
+				asset = { Url = "rbxassetid://" .. tostring(asset) }
+			elseif type(asset) == "string" then
+				asset = { Url = asset }
+			end
+			if type(asset) ~= "table" then return nil end
+			local url = asset.Url or (asset.Id and "rbxassetid://" .. tostring(asset.Id))
+			if type(url) ~= "string" or url == "" then return nil end
+			return { Url = url, ImageRectSize = asset.ImageRectSize, ImageRectOffset = asset.ImageRectOffset }
+		end
+		local function image(name, size)
+			local key = tostring(name) .. "@" .. tostring(size or "default")
+			if cache[key] ~= nil then return cache[key] or nil end
+			local asset = nil
+			local current = getProvider()
+			if current then
+				local requests = size == nil and { false } or { size, false }
+				for _, request in ipairs(requests) do
+					local ok, result = pcall(current, name, request or nil)
+					if ok then
+						asset = normalize(result)
+						if asset then break end
+					end
+				end
+			end
+			cache[key] = asset or false
+			return asset
+		end
+		local function imageFor(name, size)
+			if type(name) ~= "string" then return nil end
+			if string.find(name, "rbxasset", 1, true) then return { Url = name } end
+			local forced = string.match(name, "^lucide:(.+)$")
+			if not forced and icons[name] then return nil end
+			return image(forced or name, size)
+		end
+		local function imageIfReady(name, size)
+			if not resolved then return nil end
+			return imageFor(name, size)
+		end
+		local function queue(name, size, proxy, fallback, apply)
+			if resolved then return end
+			pending[#pending + 1] = { name = name, size = size, proxy = proxy, fallback = fallback, apply = apply }
+			if started then return end
+			started = true
+			spawn(function()
+				getProvider()
+				for i = 1, #pending do
+					local item = pending[i]
+					local asset = imageFor("lucide:" .. item.name, item.size)
+					local applied = false
+					if asset then
+						local ok, result = pcall(item.apply, item.proxy, asset)
+						applied = ok and result
+					end
+					if asset and not applied then pcall(function() item.proxy["Data"] = item.fallback end) end
+				end
+				for i = #pending, 1, -1 do pending[i] = nil end
+			end)
+		end
+		return { image_for = imageFor, image_if_ready = imageIfReady, queue = queue, set_provider = setProvider }
+	end)()
+	-- End optional Lucide asset resolver.
 	local juju_call
 	do
 		local _id_raise = setthreadidentity or setidentity or set_thread_identity
@@ -313,6 +408,9 @@ local function EmbeddedJujuUI()
 			local img_cache = drawing.__IMAGE_CACHE
 			if type(img_cls) == "table" and type(img_cache) == "table" then
 				img_cls.__SET_IMAGE = function(self, data, isUri)
+					local request = (rawget(self, "__IMAGE_REQUEST") or 0) + 1
+					rawset(self, "__IMAGE_REQUEST", request)
+					rawset(self, "__LUCIDE", nil)
 					spawn(function()
 						juju_call(function()
 							if isUri then data = game:HttpGet(data, true) end
@@ -323,6 +421,7 @@ local function EmbeddedJujuUI()
 								img_cache[data] = getcustomasset(temp_path)
 								delfile(temp_path)
 							end
+							if rawget(self, "__LUCIDE") or rawget(self, "__IMAGE_REQUEST") ~= request then return end
 							local object = self.__OBJECT
 							self.__PROPERTIES.Data = img_cache[data]
 							object.Image = img_cache[data]
@@ -449,6 +548,42 @@ local function EmbeddedJujuUI()
 			env["__eve_text_hook"] = true
 		end
 		getgenv()["_PROXY"] = drawing_proxy
+		do
+		local function applyLucideAsset(proxy, asset)
+			if type(asset) ~= "table" or type(asset.Url) ~= "string" or not string.match(asset.Url, "^rbxassetid://") then return false end
+			local object = type(proxy) == "table" and rawget(proxy, "object")
+			local instance = type(object) == "table" and rawget(object, "__OBJECT")
+			if not instance then return false end
+			local ok = pcall(function()
+				instance.Image = asset.Url
+				if asset.ImageRectSize then instance.ImageRectSize = asset.ImageRectSize end
+				if asset.ImageRectOffset then instance.ImageRectOffset = asset.ImageRectOffset end
+			end)
+			if not ok then return false end
+			rawset(object, "__IMAGE_REQUEST", (rawget(object, "__IMAGE_REQUEST") or 0) + 1)
+			rawset(object, "__LUCIDE", true)
+			local stored = rawget(object, "__PROPERTIES")
+			if type(stored) == "table" then stored.Data = asset.Url end
+			return true
+		end
+		Lucide.new_icon = function(name, size, properties)
+			local fallback = properties["Data"]
+			local icon = Lucide.image_if_ready("lucide:" .. name, size)
+			local icon_properties = {}
+			for property, value in pairs(properties) do
+				if property ~= "Data" then icon_properties[property] = value end
+			end
+			if not icon then icon_properties["Data"] = fallback end
+			local proxy = drawing_proxy["new"]("Image", icon_properties)
+			if icon then
+				if not applyLucideAsset(proxy, icon) then proxy["Data"] = fallback end
+			else
+				Lucide.queue(name, size, proxy, fallback, applyLucideAsset)
+			end
+			return proxy
+		end
+		end
+		menu["get_icon_asset"] = function(name, size) return Lucide.image_for(name, size) end
 		menu["create_proxy_drawing"] = drawing_proxy["new"]
 		do
 			local rawget = rawget
@@ -607,7 +742,7 @@ local function EmbeddedJujuUI()
 			["Parent"] = inside, ["Position"] = udim2_new(0, 100, 0, 0), ["Size"] = udim2_new(0, 1, 1, 0),
 			["Color"] = menu["colors"]["background"], ["Visible"] = true, ["Thickness"] = 1, ["Filled"] = true, ["Transparency"] = 1,
 		})
-		local search_image = drawing_proxy["new"]("Image", {
+		local search_image = Lucide.new_icon("search", 24, {
 			["Color"] = menu["colors"]["image"],
 			["Data"] = base64_decode(
 				"iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuMvu8A7YAAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAAYAAAAAEAAABgAAAAAQAAAFBhaW50Lk5FVCA1LjEuMgADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAADp1fY4ytpsegAAAGdJREFUKFONkGEWgCAIg5GTdP9LlqPBA8Pq+yFuOvA5JHFOuDXGhNvAjPVipgtZAFAGtIuvbrSdRA4sJQQBKB/wOM6V9TevAe+cn6su8liwaieSuwuONy4/k0PdZHglsKOEWD+5QyIX+wJP/y1yP3IAAAAASUVORK5CYII="
@@ -615,7 +750,7 @@ local function EmbeddedJujuUI()
 			["Position"] = udim2_new(0, 27, 1, -27), ["Parent"] = inside, ["Size"] = udim2_new(0, 12, 0, 12),
 			["Transparency"] = 1, ["ZIndex"] = 999, ["Visible"] = true,
 		})
-		local themes_image = drawing_proxy["new"]("Image", {
+		local themes_image = Lucide.new_icon("palette", 24, {
 			["Color"] = menu["colors"]["image"],
 			["Data"] = base64_decode(
 				"iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADdYAAA3WAZBveZwAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuMvu8A7YAAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAAiF8BAOgDAACIXwEA6AMAAFBhaW50Lk5FVCA1LjEuMgADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAAC1cWHl18YwawAAAH5JREFUKFOFkAsOgCAMQwE5lIfx/qeA4Do7ZCL6ErOWtHwMb7TWinyN1pE4Owxul5uJnAp2ljGFo0B5F1Zhw0p6JVxDfIZegQymtroRTK9wj0bYjl5QtTCGPkqHLGcXpFRQGtYqwhDuDU9YKhYGaQwjAGix0S7W/z0UAO0PIZyip02b2JexIAAAAABJRU5ErkJggg=="
@@ -623,7 +758,7 @@ local function EmbeddedJujuUI()
 			["Position"] = udim2_new(0, 44, 1, -27), ["Parent"] = inside, ["Size"] = udim2_new(0, 12, 0, 12),
 			["Transparency"] = 1, ["Visible"] = true,
 		})
-		local settings_image = drawing_proxy["new"]("Image", {
+		local settings_image = Lucide.new_icon("settings", 24, {
 			["Color"] = menu["colors"]["image"],
 			["Data"] = base64_decode(
 				"iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAMAAABhq6zVAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAGUExURf///wAAAFXC034AAAACdFJOU/8A5bcwSgAAAAlwSFlzAAALEwAACxMBAJqcGAAAABh0RVh0U29mdHdhcmUAUGFpbnQuTkVUIDUuMS4y+7wDtgAAALZlWElmSUkqAAgAAAAFABoBBQABAAAASgAAABsBBQABAAAAUgAAACgBAwABAAAAAgAAADEBAgAQAAAAWgAAAGmHBAABAAAAagAAAAAAAABJGQEA6AMAAEkZAQDoAwAAUGFpbnQuTkVUIDUuMS4yAAMAAJAHAAQAAAAwMjMwAaADAAEAAAABAAAABaAEAAEAAACUAAAAAAAAAAIAAQACAAQAAABSOTgAAgAHAAQAAAAwMTAwAAAAAC/Sb/YZ+v7JAAAAMklEQVQYV1WLARIAQAQC9f9Pn65oNAZpFajyUHn0MtJZWkbdt+QxBwtA47X1kzDk9QY8FowASc0mZqAAAAAASUVORK5CYII="
@@ -706,7 +841,7 @@ local function EmbeddedJujuUI()
 			["Position"] = udim2_new(0, 1, 0, 1), ["Size"] = udim2_new(0, 72, 0, 18), ["Color"] = color3_fromrgb(15, 15, 15),
 			["Transparency"] = 0, ["Rounding"] = 4, ["Data"] = pixel_image_data, ["Parent"] = list_frame, ["ZIndex"] = 11, ["Visible"] = true,
 		})
-		local list_icon = drawing_proxy["new"]("Image", {
+		local list_icon = Lucide.new_icon("keyboard", 24, {
 			["Color"] = menu["colors"]["accent"],
 			["Data"] = base64_decode(
 				"iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAMAAAC67D+PAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAGUExURf///wAAAFXC034AAAACdFJOU/8A5bcwSgAAAAlwSFlzAAAOwwAADsMBx2+oZAAAABh0RVh0U29mdHdhcmUAUGFpbnQuTkVUIDUuMS4y+7wDtgAAALZlWElmSUkqAAgAAAAFABoBBQABAAAASgAAABsBBQABAAAAUgAAACgBAwABAAAAAgAAADEBAgAQAAAAWgAAAGmHBAABAAAAagAAAAAAAABgAAAAAQAAAGAAAAABAAAAUGFpbnQuTkVUIDUuMS4yAAMAAJAHAAQAAAAwMjMwAaADAAEAAAABAAAABaAEAAEAAACUAAAAAAAAAAIAAQACAAQAAABSOTgAAgAHAAQAAAAwMTAwAAAAAOnV9jjK2mx6AAAAKklEQVQYV2NghANkJhCAKCgGUUAazIUCiBiIAVEAFoLwIQgsCgZwJiMjABBLAEmFjHpsAAAAAElFTkSuQmCC"
@@ -1566,7 +1701,7 @@ local function EmbeddedJujuUI()
 					["Parent"] = dropdown_inside, ["Size"] = udim2_new(1, -6, 0, 12), ["Transparency"] = 0, ["Visible"] = true,
 					["Filled"] = true, ["Position"] = udim2_new(0, 3, 0, 3 + (i - 1) * 12),
 				})
-				local option_checkmark = drawing_proxy["new"]("Image", {
+				local option_checkmark = Lucide.new_icon("check", 24, {
 					["Parent"] = option_click, ["Position"] = udim2_new(1, -8, 0, 2), ["Size"] = udim2_new(0, 8, 0, 8),
 					["Data"] = checkmark_image_data, ["Transparency"] = 0, ["ZIndex"] = 1005, ["Color"] = menu["colors"]["highlighted"], ["Visible"] = true,
 				})
@@ -3925,7 +4060,7 @@ local function EmbeddedJujuUI()
 						["Parent"] = frame, ["Size"] = udim2_new(0, 17 + new_element["drawings"]["text"]["TextBounds"]["X"], 1, 0),
 						["Transparency"] = 0, ["Visible"] = true, ["ZIndex"] = zindex + 3, ["Position"] = udim2_new(0, 0, 0, 0),
 					})
-					local checkmark = drawing_proxy["new"]("Image", {
+					local checkmark = Lucide.new_icon("check", 24, {
 						["Parent"] = toggle_inside, ["Position"] = udim2_new(0, 1, 0, 1), ["Size"] = udim2_new(1, -2, 1, -2), ["Data"] = checkmark_image_data, ["Transparency"] = 0, ["ZIndex"] = zindex + 3,
 						["Color"] = menu["colors"]["accent"], ["Visible"] = true,
 					})
@@ -4071,7 +4206,7 @@ local function EmbeddedJujuUI()
 						["Color"] = menu["colors"]["dark_text"], ["Text"] = "none", ["Size"] = 12, ["Font"] = 1, ["Transparency"] = 1,
 						["Visible"] = true, ["Parent"] = dropdown_inside, ["Center"] = false, ["ZIndex"] = zindex + 3, ["Position"] = udim2_new(0, 3, 0, 0),
 					})
-					local dropdown_arrow = drawing_proxy["new"]("Image", {
+					local dropdown_arrow = Lucide.new_icon("chevron-down", 24, {
 						["Color"] = menu["colors"]["dark_text"], ["Data"] = arrow_image_data, ["Size"] = udim2_new(0, 8, 0, 8),
 						["Position"] = udim2_new(1, -11, 0.5, -4), ["Transparency"] = 1, ["Visible"] = true, ["ZIndex"] = zindex + 3, ["Parent"] = dropdown_inside,
 					})
@@ -4551,7 +4686,7 @@ local function EmbeddedJujuUI()
 		function element:create_settings(count)
 			if menu["settings"][self] then return menu["settings"][self] end
 			local frame = self["frame"]
-			local cog_icon = drawing_proxy["new"]("Image", {
+			local cog_icon = Lucide.new_icon("settings", 24, {
 				["Data"] = cog_image_data, ["Visible"] = true, ["Transparency"] = 1, ["Color"] = menu["colors"]["inactive_text"],
 				["Size"] = udim2_new(0, 10, 0, 10), ["Position"] = udim2_new(1, -10, 0, 1), ["ZIndex"] = frame["ZIndex"] + 4, ["Parent"] = frame,
 			})
