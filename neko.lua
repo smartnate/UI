@@ -4060,6 +4060,22 @@ local Vec2     = _int.Vec2
 local RGB      = _int.RGB
 local Casings  = _int.Casings
 
+
+-- Forward declarations: these functions reference each other, so declare
+-- them before use. Lua local functions are NOT hoisted.
+local wrap_section
+local create_element
+local create_toggle
+local create_slider
+local create_dropdown
+local create_colorpicker
+local create_keybind
+local create_textbox
+local create_button
+local create_info
+local create_settings_section
+
+
 -- ---------------------------------------------------------------------------
 -- Drawing Proxy
 -- chain.lua manipulates drawings via ["Color"], ["Position"], ["Size"],
@@ -4232,7 +4248,7 @@ menu["ordered_groups"] = {}
 -- ---------------------------------------------------------------------------
 local sections_by_name = {}
 
-local function wrap_section(blossom_section, group, tab_obj, name, side)
+wrap_section = function(blossom_section, group, tab_obj, name, side)
     local section = {
         _blossom = blossom_section,
         group = group,
@@ -4262,7 +4278,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Element creation
 -- ---------------------------------------------------------------------------
-local function create_element(blossom_section, section, spec, elements, is_note)
+create_element = function(blossom_section, section, spec, elements, is_note)
     local name = spec["name"] or ""
     local row_height = Metrics.Row
 
@@ -4374,7 +4390,7 @@ end
 -- ---------------------------------------------------------------------------
 
 -- Toggle
-local function create_toggle(element, item, spec, control_x)
+create_toggle = function(element, item, spec, control_x)
     local flag = spec["flag"]
     local default_val = spec["default"] or false
 
@@ -4442,7 +4458,7 @@ local function create_toggle(element, item, spec, control_x)
 end
 
 -- Slider
-local function create_slider(element, item, spec, control_x)
+create_slider = function(element, item, spec, control_x)
     local flag = spec["flag"]
     local default_val = spec["default"] or 0
     local minimum = spec["min"] or 0
@@ -4539,7 +4555,7 @@ local function create_slider(element, item, spec, control_x)
 end
 
 -- Dropdown
-local function create_dropdown(element, item, spec, control_x)
+create_dropdown = function(element, item, spec, control_x)
     local flag = spec["flag"]
     local options = spec["options"] or {}
     local default_val = spec["default"] or {}
@@ -4668,7 +4684,7 @@ local function create_dropdown(element, item, spec, control_x)
 end
 
 -- Colorpicker
-local function create_colorpicker(element, item, spec, control_x)
+create_colorpicker = function(element, item, spec, control_x)
     local color_flag = spec["color_flag"]
     local transparency_flag = spec["transparency_flag"]
     local default_color = spec["default_color"] or Color3.new(1, 1, 1)
@@ -4720,7 +4736,7 @@ local function create_colorpicker(element, item, spec, control_x)
 end
 
 -- Keybind
-local function create_keybind(element, item, spec, control_x)
+create_keybind = function(element, item, spec, control_x)
     local flag = spec["flag"]
     local default_key = spec["default"]
 
@@ -4795,7 +4811,7 @@ local function create_keybind(element, item, spec, control_x)
 end
 
 -- Textbox
-local function create_textbox(element, item, spec, control_x)
+create_textbox = function(element, item, spec, control_x)
     local flag = spec["flag"]
     local default_val = spec["default"] or ""
 
@@ -4839,7 +4855,7 @@ local function create_textbox(element, item, spec, control_x)
 end
 
 -- Button
-local function create_button(element, item, spec, control_x)
+create_button = function(element, item, spec, control_x)
     local confirmation = spec["confirmation"]
 
     -- Button frame
@@ -4883,7 +4899,7 @@ local function create_button(element, item, spec, control_x)
 end
 
 -- Info
-local function create_info(element, item, spec, control_x)
+create_info = function(element, item, spec, control_x)
     local text_inst = label(item.Frame, {
         Text = "",
         TextSize = 11,
@@ -4903,7 +4919,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Settings section (for gear)
 -- ---------------------------------------------------------------------------
-local function create_settings_section(blossom_section, parent_element, count)
+create_settings_section = function(blossom_section, parent_element, count)
     local settings = { sections = {} }
     for i = 1, count do
         -- Create a new Blossom section in the same tab for settings
@@ -5183,7 +5199,7 @@ end
 
 -- Patch element methods to include set_visible
 local orig_create_element = create_element
-function create_element(blossom_section, section, spec, elements, is_note)
+create_element = function(blossom_section, section, spec, elements, is_note)
     local element = orig_create_element(blossom_section, section, spec, elements, is_note)
     function element:set_visible(visible)
         set_element_visible(element, visible)
