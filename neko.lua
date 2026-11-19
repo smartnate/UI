@@ -4193,29 +4193,31 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Colors table (maps Blossom theme to juju color names)
+-- Uses a metatable so colors always reflect the current Blossom theme,
+-- even after ApplyTheme/SetThemeColor changes Current at runtime.
 -- ---------------------------------------------------------------------------
-local colors = {
-    accent       = Current.Accent,
-    border       = Current.Outline,
-    highlighted  = Current.HoveredElement,
-    shadow       = RGB(0, 0, 0),
-    active_text  = Current.Text,
-    inactive_text = Current.InactiveText,
-    dark_text    = Current.InactiveText,
-    background   = Current.Background,
-    section      = Current.Inline,
+local colors = {}
+
+local color_mapping = {
+    accent       = "Accent",
+    border       = "Outline",
+    highlighted  = "HoveredElement",
+    active_text  = "Text",
+    inactive_text = "InactiveText",
+    dark_text    = "InactiveText",
+    background   = "Background",
+    section      = "Inline",
 }
 
-local function update_colors()
-    colors.accent       = Current.Accent
-    colors.border       = Current.Outline
-    colors.highlighted  = Current.HoveredElement
-    colors.active_text  = Current.Text
-    colors.inactive_text = Current.InactiveText
-    colors.dark_text    = Current.InactiveText
-    colors.background   = Current.Background
-    colors.section      = Current.Inline
-end
+setmetatable(colors, {
+    __index = function(_, key)
+        local field = color_mapping[key]
+        if field and Current[field] then return Current[field] end
+        return nil
+    end,
+})
+
+colors.shadow = RGB(0, 0, 0)
 
 -- ---------------------------------------------------------------------------
 -- Flags table
@@ -4399,7 +4401,6 @@ create_toggle = function(element, item, spec, control_x)
         Size = Offset(Metrics.ToggleW, Metrics.ToggleH),
         Radius = Metrics.Radius,
         BackgroundColor3 = default_val and colors.accent or colors.border,
-        BorderTransparency = 0,
         Position = Offset(-1, -3),
     }, item.Frame)
     addGrad(track)
@@ -4566,7 +4567,6 @@ create_dropdown = function(element, item, spec, control_x)
         Size = Dim2(1, 0, 0, Metrics.InputH),
         Radius = Metrics.Radius,
         BackgroundColor3 = colors.section,
-        BorderTransparency = 0,
         Position = Offset(-1, -1),
     }, item.Frame)
     addGrad(input)
@@ -4636,7 +4636,6 @@ create_dropdown = function(element, item, spec, control_x)
             Size = Dim2(1, 0, 0, #options * Metrics.ListRowH + 4),
             Radius = Metrics.Radius,
             BackgroundColor3 = colors.background,
-            BorderTransparency = 0,
             Position = Offset(0, Metrics.InputH + 2),
             Visible = false,
         }, input)
@@ -4695,7 +4694,6 @@ create_colorpicker = function(element, item, spec, control_x)
         Size = Offset(Metrics.Swatch, Metrics.Swatch),
         Radius = Metrics.Radius,
         BackgroundColor3 = default_color,
-        BorderTransparency = 0,
         Position = Offset(-1, -3),
     }, item.Frame)
     addGrad(swatch)
@@ -4745,7 +4743,6 @@ create_keybind = function(element, item, spec, control_x)
         Size = Offset(60, Metrics.ChipH),
         Radius = Metrics.Radius,
         BackgroundColor3 = colors.section,
-        BorderTransparency = 0,
         Position = Offset(-1, -3),
     }, item.Frame)
     addGrad(chip)
@@ -4820,7 +4817,6 @@ create_textbox = function(element, item, spec, control_x)
         Size = Dim2(1, 0, 0, Metrics.InputH),
         Radius = Metrics.Radius,
         BackgroundColor3 = colors.section,
-        BorderTransparency = 0,
         Position = Offset(-1, -1),
     }, item.Frame)
     addGrad(input)
@@ -4863,7 +4859,6 @@ create_button = function(element, item, spec, control_x)
         Size = Dim2(1, -2, 0, Metrics.ButtonH - 2),
         Radius = Metrics.Radius,
         BackgroundColor3 = colors.section,
-        BorderTransparency = 0,
         Position = Offset(1, 1),
     }, item.Frame)
     addGrad(btn)
@@ -5005,7 +5000,6 @@ end
 
 menu["set_accent_color"] = function(color)
     win:SetThemeColor("Accent", color)
-    update_colors()
 end
 
 menu["get_theme_list"] = function()
@@ -5182,7 +5176,6 @@ menu["apply_theme"] = function(name)
     if Themes[name] then
         win:ApplyTheme(name, true)
         menu["theme"] = name
-        update_colors()
     end
 end
 
